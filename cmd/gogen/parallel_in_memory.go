@@ -9,7 +9,7 @@ import (
 
 func create(count int) string {
 	writer := bytes.NewBufferString("")
-	for i := 0; i < count-1; i++ {
+	for i := 0; i < count; i++ {
 		writer.WriteByte(',')
 		writeRandLine(writer)
 	}

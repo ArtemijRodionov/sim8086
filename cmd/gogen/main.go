@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -20,9 +21,9 @@ func randCoord() float32 {
 	return -degree
 }
 
-func writeLine(w io.Writer, msg rnd) {
+func writeLine(w io.Writer, coord rnd) {
 	pattern := "{\"x0\": %f, \"y0\": %f,\"x1\": %f,\"y1\": %f}"
-	if _, err := fmt.Fprintf(w, pattern, msg.x0, msg.y0, msg.x1, msg.y1); err != nil {
+	if _, err := fmt.Fprintf(w, pattern, coord.x0, coord.y0, coord.x1, coord.y1); err != nil {
 		panic(err)
 	}
 }
@@ -66,8 +67,7 @@ func (g *genType) Set(s string) error {
 			return nil
 		}
 	}
-	*g = parallelInFile
-	return nil
+	return errors.New("can't find generator")
 }
 
 var threads int
@@ -80,7 +80,6 @@ func init() {
 }
 
 func main() {
-	println(generator)
 	switch generator {
 	case sequential:
 		SequentialGen()
@@ -91,6 +90,6 @@ func main() {
 	case parallelInMemory:
 		ParallelInMemoryGen(threads)
 	default:
-		return
+		flag.Usage()
 	}
 }

@@ -15,7 +15,7 @@ func create_file(count int) string {
 	defer file.Close()
 	writer := bufio.NewWriter(file)
 	defer writer.Flush()
-	for i := 0; i < count-1; i++ {
+	for i := 0; i < count; i++ {
 		writer.WriteByte(',')
 		writeRandLine(writer)
 	}
