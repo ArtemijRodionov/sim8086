@@ -1,10 +1,9 @@
 source := $(wildcard *.asm)
 target := $(patsubst %.asm,%.o,$(source))
 
-all: nasm
-nasm: $(target)
-$(target): $(source)
+%.o: %.asm
 	nasm $< -o $@
 
+nasm: $(target)
 clean:
 	rm $(target)
