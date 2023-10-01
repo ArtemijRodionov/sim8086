@@ -2,48 +2,48 @@ package sim8086
 
 import "fmt"
 
-type First byte
-type Opcode byte
-type D byte
-type W byte
+type byte1 byte
+type opcode byte
+type direction byte
+type operationType byte
 
 const (
-	directionSrc D = 0x0
-	directionDst D = 0x1
+	directionSrc direction = 0x0
+	directionDst direction = 0x1
 )
 
 const (
-	operationByte W = 0x0
-	operationWord W = 0x1
+	operationByte operationType = 0x0
+	operationWord operationType = 0x1
 )
 
-func (o First) W() W {
-	switch w := W(o & 1); w {
+func (o byte1) W() operationType {
+	switch w := operationType(o & 1); w {
 	case operationByte, operationWord:
 		return w
 	default:
-		panic("can't read W")
+		panic("can't read operationType")
 	}
 }
 
-func (o First) D() D {
-	switch d := D(o & (1 << 1)); d {
+func (o byte1) D() direction {
+	switch d := direction(o & (1 << 1)); d {
 	case directionSrc, directionDst:
 		return d
 	default:
-		panic("can't parse D")
+		panic("can't parse direction")
 	}
 }
 
-type Second byte
-type Mod byte
-type Reg byte
+type byte2 byte
+type mode byte
+type register byte
 
 const (
-	modMemOffset0  Mod = 0x0
-	modMemOffset8  Mod = 0x1
-	modMemOffset16 Mod = 0x2
-	modRegOffset0  Mod = 0x3
+	modMemOffset0  mode = 0x0
+	modMemOffset8  mode = 0x1
+	modMemOffset16 mode = 0x2
+	modRegOffset0  mode = 0x3
 )
 
 const (
@@ -57,36 +57,36 @@ const (
 	bhdi = 0x7
 )
 
-func (o Second) Mod() Mod {
-	switch d := Mod((o & 0xe0) >> 6); d {
+func (o byte2) Mod() mode {
+	switch d := mode((o & 0xe0) >> 6); d {
 	case modMemOffset0, modMemOffset8, modMemOffset16, modRegOffset0:
 		return d
 	default:
-		panic("can't parse Mod")
+		panic("can't parse mode")
 	}
 }
 
-func (o Second) Reg() Reg {
-	switch r := Reg((o & 0x38) >> 3); r {
+func (o byte2) Reg() register {
+	switch r := register((o & 0x38) >> 3); r {
 	case alax, clcx, dldx, blbx, ahsp, chbp, dhsi, bhdi:
 		return r
 	default:
-		panic("can't parse Reg")
+		panic("can't parse register")
 	}
 }
 
-func (o Second) RM() Reg {
-	switch r := Reg(o & 0x7); r {
+func (o byte2) RM() register {
+	switch r := register(o & 0x7); r {
 	case alax, clcx, dldx, blbx, ahsp, chbp, dhsi, bhdi:
 		return r
 	default:
-		panic("can't parse Reg")
+		panic("can't parse register")
 	}
 }
 
 type regEncoding struct {
-	Reg
-	W
+	register
+	operationType
 }
 
 var registerEncoding = map[regEncoding]string{
@@ -117,8 +117,8 @@ func (r regEncoding) String() string {
 }
 
 type Instruction struct {
-	First
-	Second
+	byte1
+	byte2
 }
 
 func (i Instruction) String() string {
@@ -129,5 +129,5 @@ func (i Instruction) String() string {
 }
 
 func NewIntruction(first, second byte) Instruction {
-	return Instruction{First(first), Second(second)}
+	return Instruction{byte1(first), byte2(second)}
 }
