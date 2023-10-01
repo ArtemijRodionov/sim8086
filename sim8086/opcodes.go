@@ -1,5 +1,7 @@
 package sim8086
 
+import "fmt"
+
 type First byte
 type Opcode byte
 type D byte
@@ -38,25 +40,25 @@ type Mod byte
 type Reg byte
 
 const (
-	modMemOffset0  Mod = 0x0 << 6
-	modMemOffset8  Mod = 0x1 << 6
-	modMemOffset16 Mod = 0x2 << 6
-	modRegOffset0  Mod = 0x3 << 6
+	modMemOffset0  Mod = 0x0
+	modMemOffset8  Mod = 0x1
+	modMemOffset16 Mod = 0x2
+	modRegOffset0  Mod = 0x3
 )
 
 const (
-	alax = 0x0 << 3
-	clcx = 0x1 << 3
-	dldx = 0x2 << 3
-	blbx = 0x3 << 3
-	ahsp = 0x4 << 3
-	chbp = 0x5 << 3
-	dhsi = 0x6 << 3
-	bhdi = 0x7 << 3
+	alax = 0x0
+	clcx = 0x1
+	dldx = 0x2
+	blbx = 0x3
+	ahsp = 0x4
+	chbp = 0x5
+	dhsi = 0x6
+	bhdi = 0x7
 )
 
 func (o Second) Mod() Mod {
-	switch d := Mod(o & 0xe0); d {
+	switch d := Mod((o & 0xe0) >> 6); d {
 	case modMemOffset0, modMemOffset8, modMemOffset16, modRegOffset0:
 		return d
 	default:
@@ -65,11 +67,21 @@ func (o Second) Mod() Mod {
 }
 
 func (o Second) Reg() Reg {
-	return Reg(0)
+	switch r := Reg((o & 0x38) >> 3); r {
+	case alax, clcx, dldx, blbx, ahsp, chbp, dhsi, bhdi:
+		return r
+	default:
+		panic("can't parse Reg")
+	}
 }
 
 func (o Second) RM() Reg {
-	return Reg(0)
+	switch r := Reg(o & 0x7); r {
+	case alax, clcx, dldx, blbx, ahsp, chbp, dhsi, bhdi:
+		return r
+	default:
+		panic("can't parse Reg")
+	}
 }
 
 type regEncoding struct {
@@ -109,6 +121,13 @@ type Instruction struct {
 	Second
 }
 
-func ParseIntruction(first, second byte) Instruction {
-	return Instruction{}
+func (i Instruction) String() string {
+	lhs := regEncoding{i.RM(), i.W()}
+	rhs := regEncoding{i.Reg(), i.W()}
+
+	return fmt.Sprintf("mov %s, %s", lhs, rhs)
+}
+
+func NewIntruction(first, second byte) Instruction {
+	return Instruction{First(first), Second(second)}
 }

@@ -13,9 +13,9 @@ func TestParseInstruction(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		inst := ParseIntruction(test.first, test.second)
-		if fmt.Sprint(inst) != test.result {
-			t.Errorf("fmt.Sprint(Instruction{%x, %x}) != %s", test.first, test.second, test.result)
+		inst := NewIntruction(test.first, test.second)
+		if result := fmt.Sprint(inst); result != test.result {
+			t.Errorf("'%s' != '%s' for Instruction{%x, %x}", result, test.result, test.first, test.second)
 		}
 	}
 }
