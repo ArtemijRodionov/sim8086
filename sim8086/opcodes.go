@@ -128,6 +128,6 @@ func (i Instruction) String() string {
 	return fmt.Sprintf("mov %s, %s", lhs, rhs)
 }
 
-func NewIntruction(first, second byte) Instruction {
+func NewInstruction(first, second byte) Instruction {
 	return Instruction{byte1(first), byte2(second)}
 }
