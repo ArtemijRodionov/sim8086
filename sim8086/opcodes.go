@@ -1,4 +1,4 @@
-package sim
+package sim8086
 
 type First byte
 type Opcode byte
@@ -107,4 +107,8 @@ func (r regEncoding) String() string {
 type Instruction struct {
 	First
 	Second
+}
+
+func ParseIntruction(first, second byte) Instruction {
+	return Instruction{}
 }
