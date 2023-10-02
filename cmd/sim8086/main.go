@@ -1,7 +1,46 @@
 package main
 
+import "flag"
+import "bufio"
+import "os"
+import "log"
+import "fmt"
+
 import "github.com/artemijrodionov/performance-aware-programming/sim8086"
 
-func main() {
+var objPath = flag.String("objPath", "", "Unix path to an ASM obj file")
 
+func ScanTwoBytes(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	if atEOF && len(data) < 2 {
+		return 0, nil, nil
+	}
+	return 2, data[0:2], nil
+}
+
+func main() {
+	flag.Parse()
+	if *objPath == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+	file, err := os.Open(*objPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	scanner.Split(ScanTwoBytes)
+	for scanner.Scan() {
+		bytes := scanner.Bytes()
+		if len(bytes) != 2 {
+			log.Fatal("Can read only by 2 bytes and got intead % x ", bytes)
+		}
+		inst := sim8086.NewInstruction(bytes[0], bytes[1])
+		fmt.Println(inst)
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Fatal(err)
+	}
 }
