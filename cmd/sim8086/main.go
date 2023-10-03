@@ -1,16 +1,19 @@
 package main
 
-import "flag"
-import "bufio"
-import "os"
-import "log"
-import "fmt"
+import (
+	"bufio"
+	"flag"
+	"fmt"
+	"log"
+	"os"
+	"strings"
 
-import "github.com/artemijrodionov/performance-aware-programming/sim8086"
+	"github.com/artemijrodionov/performance-aware-programming/sim8086"
+)
 
 var objPath = flag.String("objPath", "", "Unix path to an ASM obj file")
 
-func ScanTwoBytes(data []byte, atEOF bool) (advance int, token []byte, err error) {
+func scanTwoBytes(data []byte, atEOF bool) (advance int, token []byte, err error) {
 	if atEOF && len(data) == 0 {
 		return 0, nil, nil
 	}
@@ -18,9 +21,13 @@ func ScanTwoBytes(data []byte, atEOF bool) (advance int, token []byte, err error
 	return len(data[0:2]), data[0:2], nil
 }
 
+func isObjFile(filename string) bool {
+	return filename != "" && strings.HasSuffix(filename, ".o")
+}
+
 func main() {
 	flag.Parse()
-	if *objPath == "" {
+	if !isObjFile(*objPath) {
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -31,7 +38,7 @@ func main() {
 	defer file.Close()
 
 	scanner := bufio.NewScanner(bufio.NewReader(file))
-	scanner.Split(ScanTwoBytes)
+	scanner.Split(scanTwoBytes)
 	for scanner.Scan() {
 		bytes := scanner.Bytes()
 		inst := sim8086.NewInstruction(bytes[0], bytes[1])
