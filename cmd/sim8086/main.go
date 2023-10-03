@@ -11,10 +11,11 @@ import "github.com/artemijrodionov/performance-aware-programming/sim8086"
 var objPath = flag.String("objPath", "", "Unix path to an ASM obj file")
 
 func ScanTwoBytes(data []byte, atEOF bool) (advance int, token []byte, err error) {
-	if atEOF && len(data) < 2 {
+	if atEOF && len(data) == 0 {
 		return 0, nil, nil
 	}
-	return 2, data[0:2], nil
+
+	return len(data[0:2]), data[0:2], nil
 }
 
 func main() {
@@ -29,13 +30,10 @@ func main() {
 	}
 	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
+	scanner := bufio.NewScanner(bufio.NewReader(file))
 	scanner.Split(ScanTwoBytes)
 	for scanner.Scan() {
 		bytes := scanner.Bytes()
-		if len(bytes) != 2 {
-			log.Fatal("Can read only by 2 bytes and got intead % x ", bytes)
-		}
 		inst := sim8086.NewInstruction(bytes[0], bytes[1])
 		fmt.Println(inst)
 	}
