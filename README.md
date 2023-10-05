@@ -8,8 +8,9 @@ https://github.com/cmuratori/computer_enhance/tree/main/perfaware/part1
 https://www.computerenhance.com/p/table-of-contents
 
 1. https://www.computerenhance.com/p/instruction-decoding-on-the-8086
-  HM listings 37 and 38
+    * HM listings 37 and 38
+    * p. 164 in manual
 
 2. https://www.computerenhance.com/p/decoding-multiple-instructions-and 
-  HM at 30:00: listings 39 and 40
-  p. 164 in manual
+    * HM at 30:00: listings 39 and 40
+    * p. 164 in manual
