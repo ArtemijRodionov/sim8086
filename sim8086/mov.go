@@ -2,6 +2,11 @@ package sim8086
 
 import "fmt"
 
+/*
+Probably I should create an interface to extract byte positions for D, W, Reg and R/W for other opcodes
+I should think about different sizes of opcodes
+*/
+
 type byte1 byte
 type opcode byte
 type direction byte
