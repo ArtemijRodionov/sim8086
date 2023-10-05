@@ -11,7 +11,7 @@ import (
 	"github.com/artemijrodionov/performance-aware-programming/sim8086"
 )
 
-var objPath = flag.String("objPath", "", "Unix path to an ASM obj file")
+var objPath = flag.String("objPath", "", "Unix path to a binary file compiled with nasm")
 
 func scanTwoBytes(data []byte, atEOF bool) (advance int, token []byte, err error) {
 	if atEOF && len(data) == 0 {
@@ -22,7 +22,7 @@ func scanTwoBytes(data []byte, atEOF bool) (advance int, token []byte, err error
 }
 
 func isObjFile(filename string) bool {
-	return filename != "" && strings.HasSuffix(filename, ".o")
+	return filename != "" && !strings.HasSuffix(filename, ".asm")
 }
 
 func main() {
