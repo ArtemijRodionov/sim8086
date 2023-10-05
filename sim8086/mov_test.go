@@ -10,6 +10,16 @@ func TestParseInstruction(t *testing.T) {
 		result string
 	}{
 		{0x89, 0xd9, "mov cx, bx"},
+		{0x88, 0xe5, "mov ch, ah"},
+		{0x89, 0xda, "mov dx, bx"},
+		{0x89, 0xde, "mov si, bx"},
+		{0x89, 0xfb, "mov bx, di"},
+		{0x88, 0xc8, "mov al, cl"},
+		{0x88, 0xed, "mov ch, ch"},
+		{0x89, 0xc3, "mov bx, ax"},
+		{0x89, 0xf3, "mov bx, si"},
+		{0x89, 0xfc, "mov sp, di"},
+		{0x89, 0xc5, "mov bp, ax"},
 	}
 
 	for _, test := range tests {
