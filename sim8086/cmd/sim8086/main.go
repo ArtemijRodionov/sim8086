@@ -18,7 +18,6 @@ func scanTwoBytes(data []byte, atEOF bool) (advance int, token []byte, err error
 	if atEOF && len(data) == 0 {
 		return 0, nil, nil
 	}
-
 	return len(data[0:2]), data[0:2], nil
 }
 
