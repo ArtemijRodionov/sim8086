@@ -1,4 +1,4 @@
-package sim8086
+package inst
 
 import "testing"
 import "fmt"
