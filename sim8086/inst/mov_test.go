@@ -20,12 +20,15 @@ func TestParseInstruction(t *testing.T) {
 		{0x89, 0xf3, "mov bx, si"},
 		{0x89, 0xfc, "mov sp, di"},
 		{0x89, 0xc5, "mov bp, ax"},
+		{0x89, 0xc5, "mov cl, 12"},
 	}
 
 	for _, test := range tests {
-		inst := NewInstruction(test.first, test.second)
-		if result := fmt.Sprint(inst); result != test.result {
-			t.Errorf("'%s' != '%s' for Instruction{%x, %x}", result, test.result, test.first, test.second)
-		}
+		t.Run(test.result, func(t *testing.T) {
+			inst := NewInstruction(test.first, test.second)
+			if result := fmt.Sprint(inst); result != test.result {
+				t.Errorf("'%s' != '%s' for Instruction{%x, %x}", result, test.result, test.first, test.second)
+			}
+		})
 	}
 }
