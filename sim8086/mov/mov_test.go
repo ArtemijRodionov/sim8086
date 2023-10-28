@@ -1,4 +1,4 @@
-package inst
+package mov
 
 import "testing"
 import "fmt"
@@ -20,7 +20,7 @@ func TestParseInstruction(t *testing.T) {
 		{0x89, 0xf3, "mov bx, si"},
 		{0x89, 0xfc, "mov sp, di"},
 		{0x89, 0xc5, "mov bp, ax"},
-		{0x89, 0xc5, "mov cl, 12"},
+		{0xb1, 0x0c, "mov cl, 12"},
 	}
 
 	for _, test := range tests {

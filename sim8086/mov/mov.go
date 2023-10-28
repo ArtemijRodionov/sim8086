@@ -1,4 +1,4 @@
-package inst
+package mov
 
 import "fmt"
 
@@ -41,14 +41,14 @@ func (o byte1) D() direction {
 }
 
 type byte2 byte
-type mode byte
+type modeOffset byte
 type register byte
 
 const (
-	modMemOffset0  mode = 0x0
-	modMemOffset8  mode = 0x1
-	modMemOffset16 mode = 0x2
-	modRegOffset0  mode = 0x3
+	modMemOffset0  modeOffset = 0x0
+	modMemOffset8  modeOffset = 0x1
+	modMemOffset16 modeOffset = 0x2
+	modRegOffset0  modeOffset = 0x3
 )
 
 const (
@@ -62,8 +62,8 @@ const (
 	bhdi = 0x7
 )
 
-func (o byte2) Mod() mode {
-	switch d := mode((o & 0xe0) >> 6); d {
+func (o byte2) Mod() modeOffset {
+	switch d := modeOffset((o & 0xe0) >> 6); d {
 	case modMemOffset0, modMemOffset8, modMemOffset16, modRegOffset0:
 		return d
 	default:
@@ -121,16 +121,48 @@ func (r regEncoding) String() string {
 	return val
 }
 
+type effectiveAddressEncoding struct {
+	register
+	modeOffset
+}
+
+var effAddrOffset0Encoding = map[register]string{
+	alax: "bx + si",
+	clcx: "bx + di",
+	dldx: "bp + si",
+	blbx: "bp + di",
+	ahsp: "si",
+	chbp: "di",
+	// dhsi TODO direct address
+	bhdi: "bx",
+}
+
+func (e effectiveAddressEncoding) String() string {
+	if e.register == dhsi {
+		if e.modeOffset == modMemOffset0 {
+			return string(e.register)
+		}
+		return "bp + [d8]"
+	}
+	return ""
+}
+
 type Instruction struct {
 	byte1
 	byte2
 }
 
 func (i Instruction) String() string {
-	lhs := regEncoding{i.RM(), i.W()}
-	rhs := regEncoding{i.Reg(), i.W()}
-
-	return fmt.Sprintf("mov %s, %s", lhs, rhs)
+	switch i.Mod() {
+	case modMemOffset0:
+		return ""
+	case modRegOffset0:
+		lhs := regEncoding{i.RM(), i.W()}
+		rhs := regEncoding{i.Reg(), i.W()}
+		return fmt.Sprintf("mov %s, %s", lhs, rhs)
+	default:
+		return ""
+	}
 }
 
 func NewInstruction(first, second byte) Instruction {
