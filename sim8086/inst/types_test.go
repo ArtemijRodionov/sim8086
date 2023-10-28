@@ -7,7 +7,7 @@ import (
 type A byte
 
 func (a A) Mode() ModeOffset {
-	return memOffset0
+	return regOffset0
 }
 func (a A) Name() string {
 	return "test"

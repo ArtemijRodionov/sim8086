@@ -28,24 +28,38 @@ const (
 	bhdi Register = 0x7
 )
 
+func (m ModeOffset) Validate() error {
+	switch m {
+	case regOffset0, memOffset0, memOffset8, memOffset16:
+		return nil
+	default:
+		return errors.New(fmt.Sprintf("Can't parse mode %x", m))
+	}
+}
+
 type InstEncoding interface {
-	Mode() ModeOffset
 	Name() string
+	Mode() ModeOffset
+	Reg() Register
+	RM() Register
 }
 
 type InstRegEncoding interface {
 	InstEncoding
 
 	W() OpSize
-	Reg() Register
-	RM() Register
 }
 
-type InstAddrEncoding interface {
+type InstDirectAddrEncoding interface {
 	InstEncoding
 
-	Reg() Register
-	Disp() string
+	DirectAddress() string
+}
+
+type InstDisplacementAddrEncoding interface {
+	InstEncoding
+
+	Displacement(bool) int16
 }
 
 type Inst struct {
@@ -57,15 +71,21 @@ func New(i InstEncoding) Inst {
 }
 
 func (i Inst) Parse() (string, error) {
+	mode := i.Mode()
+	if err := mode.Validate(); err != nil {
+		return "", err
+	}
+
 	var result = ""
-	switch i.Mode() {
-	case memOffset0:
+	if mode == regOffset0 {
 		inst, ok := i.InstEncoding.(InstRegEncoding)
 		if !ok {
 			return "", errors.New(fmt.Sprintf(
 				"Instraction %s doesn't implement required interface InstRegEncoding", i.Name()))
 		}
 		result = parseRegEncoding(inst)
+	} else {
+
 	}
 	return result, nil
 }
