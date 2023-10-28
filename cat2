@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+
+import argparse
+import glob
+
+
+def read_obj(path):
+    with open(path, 'rb') as f:
+        bins = f.read()
+
+    result = []
+    for i in range(len(bins) // 2):
+        j = i * 2
+        result.append(f"{hex(bins[j])} {hex(bins[j+1])}")
+
+    return result
+
+
+def read_src(path):
+    with open(path) as f:
+        src = f.read()
+    result = []
+    for line in src.splitlines():
+        if not line or ';' in line or 'bits' in line:
+            continue
+        result.append(line)
+    return result
+
+
+def main():
+    parser = argparse.ArgumentParser('cat by 2')
+    parser.add_argument("number")
+    args = parser.parse_args()
+
+    paths = glob.glob(f'data/*{args.number}*.asm')
+    assert len(paths) == 1, "Can't find paths: " + repr(paths)
+    src_path = paths[0]
+    obj_path = src_path.replace('.asm', '')
+
+    obj = read_obj(obj_path)
+    src = read_src(src_path)
+
+    assert len(obj) == len(src)
+    for s, o in zip(src, obj):
+        print(f"{s} == {o}")
+
+
+if __name__ == "__main__":
+    main()

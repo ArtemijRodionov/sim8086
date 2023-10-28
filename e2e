@@ -4,17 +4,19 @@ set -eou pipefail
 
 readArg()
 {
+
   local srcPath=data
-  if [[ -z $1 ]]
+  if [[ $# -eq 0 ]]
   then
     ls $srcPath/*.asm
+    return
+  fi
+
+  if [[ $1 =~ '^[0-9]+$' ]] 
+  then
+    ls $srcPath/*$1*.asm
   else
-    if [[ $1 =~ '^[0-9]+$' ]] 
-    then
-      ls $srcPath/*$1*.asm
-    else
-      echo $1
-    fi
+    echo $1
   fi
 }
 
@@ -28,6 +30,11 @@ readObj()
   ./sim8086.bin -objPath $1
 }
 
+diffDelta()
+{
+  diff -u <(echo "$1") <(echo "$2") | delta --color-only --side-by-side
+}
+
 diffSourceWithParsed()
 {
   local srcAsm="$(readSrc $1)"
@@ -36,7 +43,7 @@ diffSourceWithParsed()
   local green='\033[1;32m'
   local nocolor='\033[0m'
 
-  local output=$(diff -u <(echo "$srcAsm") <(echo "$objAsm") | delta --color-only --side-by-side)
+  local output=$(diffDelta "$srcAsm" "$objAsm")
   if [[ -z $output ]]
   then
     echo -e "${green}Success${nocolor} for $1"
@@ -60,5 +67,5 @@ run ()
   done
 }
 
-args=$(readArg ${1:-""})
-run $args
+args=$(readArg $@)
+run ${args:-""}
