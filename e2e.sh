@@ -4,7 +4,7 @@ set -eou pipefail
 
 readArg()
 {
-  local srcPath=computer_enhance/perfaware/part1
+  local srcPath=data
   if [[ -z $1 ]]
   then
     ls $srcPath/*.asm
