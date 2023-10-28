@@ -12,6 +12,6 @@ test-unit:
 	cd sim8086 && go test ./...
 
 test-e2e: test-e2e-number sim8086.bin
-	@./e2e.sh $(T)
+	@./e2e $(T)
 
 
