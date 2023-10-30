@@ -22,6 +22,7 @@ type InstEncoding interface {
 type InstDirectAddrEncoding interface {
 	InstEncoding
 
+	// TODO define return type
 	DirectAddress() string
 }
 
@@ -38,11 +39,13 @@ func Parse(i InstEncoding) (string, error) {
 		return "", err
 	}
 
-	var result = ""
 	if inst.mode == regOffset0 {
-		result = parseRegEncoding(inst)
-	} else {
-
+		return parseRegEncoding(inst), nil
 	}
-	return result, nil
+
+	if isDirectAddress(inst.mode, inst.rm) {
+		return "da", nil
+	}
+
+	return "", nil
 }

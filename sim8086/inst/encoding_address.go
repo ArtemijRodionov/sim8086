@@ -10,3 +10,7 @@ var effAddrOffset0Encoding = map[register]string{
 	// dhsi TODO direct address
 	bhdi: "bx",
 }
+
+func isDirectAddress(m modeOffset, r register) bool {
+	return m == memOffset0 && r == dhsi
+}
