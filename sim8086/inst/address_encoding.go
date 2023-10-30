@@ -1,6 +1,6 @@
 package inst
 
-var effAddrOffset0Encoding = map[Register]string{
+var effAddrOffset0Encoding = map[register]string{
 	alax: "bx + si",
 	clcx: "bx + di",
 	dldx: "bp + si",

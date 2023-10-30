@@ -4,21 +4,21 @@ import (
 	"fmt"
 )
 
-func parseRegEncoding(inst InstRegEncoding) string {
-	lhs := regEncoding{inst.Reg(), inst.W()}
-	rhs := regEncoding{inst.RM(), inst.W()}
-	return fmt.Sprintf("%s %s, %s", inst.Name(), lhs, rhs)
+func parseRegEncoding(inst inst) string {
+	lhs := regEncoding{inst.reg, inst.size}
+	rhs := regEncoding{inst.rm, inst.size}
+	return fmt.Sprintf("%s %s, %s", inst.name, lhs, rhs)
 }
 
 type regEncoding struct {
-	Register
-	OpSize
+	register
+	opSize
 }
 
 func (r regEncoding) String() string {
 	val, ok := regString[r]
 	if !ok {
-		panic("Can't encode register")
+		panic("Unreachable")
 	}
 	return val
 }

@@ -5,49 +5,116 @@ import (
 	"fmt"
 )
 
-type Register byte
-type OpSize byte
-type ModeOffset byte
+type opDirection byte
+type opSize byte
+type modeOffset byte
+type register byte
 
 const (
-	opByte OpSize = 0x0
-	opWord OpSize = 0x1
+	opSrc opDirection = 0x0
+	opDst opDirection = 0x1
 
-	memOffset0  ModeOffset = 0x0
-	memOffset8  ModeOffset = 0x1
-	memOffset16 ModeOffset = 0x2
-	regOffset0  ModeOffset = 0x3
+	opByte opSize = 0x0
+	opWord opSize = 0x1
 
-	alax Register = 0x0
-	clcx Register = 0x1
-	dldx Register = 0x2
-	blbx Register = 0x3
-	ahsp Register = 0x4
-	chbp Register = 0x5
-	dhsi Register = 0x6
-	bhdi Register = 0x7
+	memOffset0  modeOffset = 0x0
+	memOffset8  modeOffset = 0x1
+	memOffset16 modeOffset = 0x2
+	regOffset0  modeOffset = 0x3
+
+	alax register = 0x0
+	clcx register = 0x1
+	dldx register = 0x2
+	blbx register = 0x3
+	ahsp register = 0x4
+	chbp register = 0x5
+	dhsi register = 0x6
+	bhdi register = 0x7
 )
 
-func (m ModeOffset) Validate() error {
+func (o opDirection) validate() error {
+	switch o {
+	case opDst, opSrc:
+		return nil
+	default:
+		return errors.New(fmt.Sprintf("Can't parse op direction %x", o))
+	}
+}
+
+func (o opSize) validate() error {
+	switch o {
+	case opByte, opWord:
+		return nil
+	default:
+		return errors.New(fmt.Sprintf("Can't parse op size %x", o))
+	}
+}
+
+func (m modeOffset) validate() error {
 	switch m {
 	case regOffset0, memOffset0, memOffset8, memOffset16:
 		return nil
 	default:
-		return errors.New(fmt.Sprintf("Can't parse mode %x", m))
+		return errors.New(fmt.Sprintf("Can't parse mode offset %x", m))
 	}
 }
 
-type InstEncoding interface {
-	Name() string
-	Mode() ModeOffset
-	Reg() Register
-	RM() Register
+func (r register) validate() error {
+	switch r {
+	case alax, clcx, dldx, blbx, ahsp, chbp, dhsi, bhdi:
+		return nil
+	default:
+		return errors.New(fmt.Sprintf("Can't parse register %x", r))
+	}
 }
 
-type InstRegEncoding interface {
-	InstEncoding
+/*
+1. Делаю структуру, которая с byte1 и byte2
+2.1 Делаю callback для direct address и displacement lo/hi
+2.2 Делаю struct для DA и DL и DH
+*/
 
-	W() OpSize
+type Inst struct {
+	Name      string
+	Direction byte
+	Size      byte
+	Mode      byte
+	Reg       byte
+	RM        byte
+}
+
+type inst struct {
+	name      string
+	direction opDirection
+	size      opSize
+	mode      modeOffset
+	reg       register
+	rm        register
+}
+
+func new(i Inst) inst {
+	return inst{
+		name:      i.Name,
+		direction: opDirection(i.Direction),
+		size:      opSize(i.Size),
+		mode:      modeOffset(i.Mode),
+		reg:       register(i.Reg),
+		rm:        register(i.RM),
+	}
+}
+
+func (i inst) validate() error {
+	return errors.Join(
+		i.direction.validate(),
+		i.size.validate(),
+		i.mode.validate(),
+		i.reg.validate(),
+		i.rm.validate(),
+	)
+}
+
+type InstEncoding interface {
+	GetInst() Inst
 }
 
 type InstDirectAddrEncoding interface {
@@ -59,30 +126,18 @@ type InstDirectAddrEncoding interface {
 type InstDisplacementAddrEncoding interface {
 	InstEncoding
 
-	Displacement(bool) int16
+	DispLo() byte
+	DispHi() byte
 }
 
-type Inst struct {
-	InstEncoding
-}
-
-func New(i InstEncoding) Inst {
-	return Inst{i}
-}
-
-func (i Inst) Parse() (string, error) {
-	mode := i.Mode()
-	if err := mode.Validate(); err != nil {
+func Parse(i InstEncoding) (string, error) {
+	inst := new(i.GetInst())
+	if err := inst.validate(); err != nil {
 		return "", err
 	}
 
 	var result = ""
-	if mode == regOffset0 {
-		inst, ok := i.InstEncoding.(InstRegEncoding)
-		if !ok {
-			return "", errors.New(fmt.Sprintf(
-				"Instraction %s doesn't implement required interface InstRegEncoding", i.Name()))
-		}
+	if inst.mode == regOffset0 {
 		result = parseRegEncoding(inst)
 	} else {
 

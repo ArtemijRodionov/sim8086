@@ -6,31 +6,25 @@ import (
 
 type A byte
 
-func (a A) Mode() ModeOffset {
-	return regOffset0
-}
-func (a A) Name() string {
-	return "test"
-}
-
-func (a A) W() OpSize {
-	return opWord
-}
-func (a A) Reg() Register {
-	return alax
-}
-func (a A) RM() Register {
-	return alax
+func (a A) GetInst() Inst {
+	return Inst{
+		Name:      "test",
+		Direction: 0x0,
+		Size:      0x0,
+		Mode:      0x3,
+		Reg:       0x0,
+		RM:        0x0,
+	}
 }
 
 func TestTypes(t *testing.T) {
-	a := A(0)
-	inst, err := New(a).Parse()
+	var a A
+	inst, err := Parse(a)
 	if err != nil {
 		t.Errorf("Got error %s", err)
 	}
 
-	if inst != "test ax, ax" {
+	if inst != "test al, al" {
 		t.Errorf("Got %s", inst)
 	}
 }
