@@ -6,20 +6,28 @@ import (
 
 type A byte
 
-func (a A) GetInst() Inst {
+func (a A) Inst() Inst {
 	return Inst{
-		Name:      "test",
 		Direction: 0x0,
 		Size:      0x0,
 		Mode:      0x3,
 		Reg:       0x0,
 		RM:        0x0,
+		Name:      "test",
 	}
+}
+
+func (a A) DispHi() byte {
+	return 0
+}
+
+func (a A) DispLo() byte {
+	return 0
 }
 
 func TestTypes(t *testing.T) {
 	var a A
-	inst, err := Parse(a)
+	inst, err := Read(a)
 	if err != nil {
 		t.Errorf("Got error %s", err)
 	}

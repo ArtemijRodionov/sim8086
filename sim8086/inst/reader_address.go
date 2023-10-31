@@ -7,7 +7,7 @@ var effAddrOffset0Encoding = map[register]string{
 	blbx: "bp + di",
 	ahsp: "si",
 	chbp: "di",
-	// dhsi TODO direct address
+	dhsi: "bp",
 	bhdi: "bx",
 }
 
