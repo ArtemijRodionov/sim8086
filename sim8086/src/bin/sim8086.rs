@@ -51,10 +51,13 @@ fn main() {
     for op in parse(data.into_iter()) {
         println!(
             "{}",
-            op.expect("parse op")
-                .encode()
-                .expect("encoding")
-                .to_string()
+            match op
+                .map_err(|_| "parse op err")
+                .and_then(|x| x.encode().map_err(|_| "encode err"))
+            {
+                Ok(op) => op.to_string(),
+                Err(msg) => msg.to_string(),
+            }
         );
     }
 }
