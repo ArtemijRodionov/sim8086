@@ -27,7 +27,7 @@ readSrc()
 
 readObj()
 {
-  ./sim8086.bin -objPath $1
+  ./sim8086.bin $1
 }
 
 diffDelta()

@@ -2,3 +2,5 @@
 
 *.o
 *.bin
+target
+Cargo.lock
