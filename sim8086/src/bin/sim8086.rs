@@ -1,24 +1,81 @@
 use std::env::args;
 
-#[derive(Debug, Clone, Copy)]
-struct Mov(u8, u8);
+use sim8086;
+
+#[derive(Debug, Clone)]
+struct Mov(Vec<u8>);
 
 impl Mov {
+    fn new() -> Self {
+        Self(Vec::with_capacity(6))
+    }
     fn w(&self) -> u8 {
-        self.0 & 0b1
+        self.0[0] & 0b1
+    }
+    fn d(&self) -> u8 {
+        (self.0[0] >> 1) & 0b1
+    }
+    fn mode(&self) -> u8 {
+        (self.0[1] >> 6) & 0b11
     }
     fn reg(&self) -> u8 {
-        (self.1 >> 3) & 0b111
+        (self.0[1] >> 3) & 0b111
     }
     fn rm(&self) -> u8 {
-        self.1 & 0b111
+        self.0[1] & 0b111
     }
 
-    fn encode(&self) -> Result<sim8086::Inst, sim8086::Error> {
-        let rhs = sim8086::FieldEncoding::from(self.reg(), self.w())?;
-        let lhs = sim8086::FieldEncoding::from(self.rm(), self.w())?;
+    fn to_write(&self) -> usize {
+        use sim8086::{Address, Mode};
+        match Mode::from(self.mode()) {
+            Mode::Mem0Disp => {
+                if let Address::DirectBP = Address::from(self.reg()) {
+                    1
+                } else {
+                    0
+                }
+            }
+            Mode::Mem1Disp => 1,
+            Mode::Mem2Disp => 2,
+            _ => 0,
+        }
+    }
+
+    fn write(&mut self, data: u8) {
+        assert!(self.0.len() <= 6);
+        self.0.push(data);
+    }
+
+    fn encode(&self) -> sim8086::Inst {
+        use sim8086::*;
+
+        let mut src = Encoding::register(self.reg(), self.w());
+        let mut dst = match Mode::from(self.mode()) {
+            Mode::Reg => Encoding::register(self.rm(), self.w()),
+            Mode::Mem0Disp => {
+                let address = Address::from(self.rm());
+                let mut direct = None;
+                if matches!(address, Address::DirectBP) {
+                    direct = Some(self.0[2])
+                }
+                Encoding::effective_address(address, direct, None, None)
+            }
+            Mode::Mem1Disp => {
+                let address = Address::from(self.rm());
+                Encoding::effective_address(address, None, Some(self.0[2]), None)
+            }
+            Mode::Mem2Disp => {
+                let address = Address::from(self.rm());
+                Encoding::effective_address(address, None, Some(self.0[2]), Some(self.0[3]))
+            }
+        };
+
+        if self.d() == 0b1 {
+            (src, dst) = (dst, src);
+        };
+
         let name = "mov".to_string();
-        Ok(sim8086::Inst::new(name, lhs, rhs))
+        sim8086::Inst::new(name, dst, src)
     }
 }
 
@@ -32,7 +89,16 @@ fn parse(mut it: impl Iterator<Item = u8>) -> Vec<Result<Mov, sim8086::Error>> {
         if is_mov(first) {
             let mov = it
                 .next()
-                .map(|second| Mov(first, second))
+                .and_then(|second| {
+                    let mut mov = Mov::new();
+                    mov.write(first);
+                    mov.write(second);
+                    for _ in 0..mov.to_write() {
+                        mov.write(it.next()?);
+                    }
+
+                    Some(mov)
+                })
                 .ok_or(sim8086::Error);
             ops.push(mov)
         } else {
@@ -49,15 +115,9 @@ fn main() {
         .expect("Provide unix path to 8086 binary file");
     let data = std::fs::read(path).expect("Can't open given file");
     for op in parse(data.into_iter()) {
-        println!(
-            "{}",
-            match op
-                .map_err(|_| "parse op err")
-                .and_then(|x| x.encode().map_err(|_| "encode err"))
-            {
-                Ok(op) => op.to_string(),
-                Err(msg) => msg.to_string(),
-            }
-        );
+        match op.map_err(|_| "").and_then(|x| Ok(x.encode())) {
+            Ok(op) => println!("{}", op.to_string()),
+            Err(_) => continue,
+        };
     }
 }

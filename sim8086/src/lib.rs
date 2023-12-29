@@ -4,15 +4,27 @@ use std::fmt;
 pub struct Error;
 
 #[derive(Debug, Clone, Copy)]
-enum Mode {
-    Mem0disp = 0b00,
-    Mem8disp = 0b01,
-    Mem16dist = 0b10,
-    Reg = 0b11,
+pub enum Mode {
+    Mem0Disp,
+    Mem1Disp,
+    Mem2Disp,
+    Reg,
+}
+
+impl Mode {
+    pub fn from(mode: u8) -> Self {
+        match mode & 0b11 {
+            0b00 => Self::Mem0Disp,
+            0b01 => Self::Mem1Disp,
+            0b10 => Self::Mem2Disp,
+            0b11 => Self::Reg,
+            _ => unreachable!(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum FieldEncoding {
+pub enum Register {
     AL,
     CL,
     DL,
@@ -31,31 +43,152 @@ pub enum FieldEncoding {
     DI,
 }
 
-impl FieldEncoding {
-    pub fn from(reg: u8, w: u8) -> Result<Self, Error> {
-        match (reg & 0b111) << 1 | (w & 0b1) {
-            0b0000 => Ok(Self::AL),
-            0b0010 => Ok(Self::CL),
-            0b0100 => Ok(Self::DL),
-            0b0110 => Ok(Self::BL),
-            0b1000 => Ok(Self::AH),
-            0b1010 => Ok(Self::CH),
-            0b1100 => Ok(Self::DH),
-            0b1110 => Ok(Self::BH),
-            0b0001 => Ok(Self::AX),
-            0b0011 => Ok(Self::CX),
-            0b0101 => Ok(Self::DX),
-            0b0111 => Ok(Self::BX),
-            0b1001 => Ok(Self::SP),
-            0b1011 => Ok(Self::BP),
-            0b1101 => Ok(Self::SI),
-            0b1111 => Ok(Self::DI),
-            _ => Err(Error),
+#[derive(Debug, Clone, Copy)]
+pub enum Address {
+    BXSI,
+    BXDI,
+    BPSI,
+    BPDI,
+    SI,
+    DI,
+    BX,
+    DirectBP,
+}
+
+impl Address {
+    pub fn from(address: u8) -> Self {
+        match address & 0b111 {
+            0b000 => Self::BXSI,
+            0b001 => Self::BXDI,
+            0b010 => Self::BPSI,
+            0b011 => Self::BPDI,
+            0b100 => Self::SI,
+            0b101 => Self::DI,
+            0b110 => Self::DirectBP,
+            0b111 => Self::BX,
+            _ => unreachable!(),
         }
     }
 }
 
-impl fmt::Display for FieldEncoding {
+#[derive(Debug, Clone, Copy)]
+pub struct EffectiveAddress {
+    address: Address,
+    direct: Option<u8>,
+    disp1: Option<u8>,
+    disp2: Option<u8>,
+}
+
+impl EffectiveAddress {
+    fn new(address: Address, direct: Option<u8>, disp1: Option<u8>, disp2: Option<u8>) -> Self {
+        Self {
+            address,
+            direct,
+            disp1,
+            disp2,
+        }
+    }
+}
+
+impl Register {
+    fn from(reg: u8, w: u8) -> Self {
+        match (reg & 0b111, w & 0b1) {
+            (0b000, 0b0) => Self::AL,
+            (0b001, 0b0) => Self::CL,
+            (0b010, 0b0) => Self::DL,
+            (0b011, 0b0) => Self::BL,
+            (0b100, 0b0) => Self::AH,
+            (0b101, 0b0) => Self::CH,
+            (0b110, 0b0) => Self::DH,
+            (0b111, 0b0) => Self::BH,
+            (0b000, 0b1) => Self::AX,
+            (0b001, 0b1) => Self::CX,
+            (0b010, 0b1) => Self::DX,
+            (0b011, 0b1) => Self::BX,
+            (0b100, 0b1) => Self::SP,
+            (0b101, 0b1) => Self::BP,
+            (0b110, 0b1) => Self::SI,
+            (0b111, 0b1) => Self::DI,
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Encoding {
+    Register(Register),
+    EffectiveAddress(EffectiveAddress),
+}
+
+impl Encoding {
+    pub fn register(reg: u8, w: u8) -> Self {
+        Self::Register(Register::from(reg, w))
+    }
+
+    pub fn effective_address(
+        address: Address,
+        direct: Option<u8>,
+        disp1: Option<u8>,
+        disp2: Option<u8>,
+    ) -> Self {
+        Self::EffectiveAddress(EffectiveAddress::new(address, direct, disp1, disp2))
+    }
+}
+
+pub struct Inst {
+    name: String,
+    lhs: Encoding,
+    rhs: Encoding,
+}
+
+impl Inst {
+    pub fn new(name: String, lhs: Encoding, rhs: Encoding) -> Self {
+        Self { name, lhs, rhs }
+    }
+}
+
+impl fmt::Display for EffectiveAddress {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(val) = self.direct {
+            return write!(f, "[{}]", val.to_string());
+        }
+
+        write!(
+            f,
+            "[{}{}]",
+            match self.address {
+                Address::BXSI => "bx + si",
+                Address::BXDI => "bx + di",
+                Address::BPSI => "bp + si",
+                Address::BPDI => "bp + di",
+                Address::SI => "si",
+                Address::DI => "di",
+                Address::BX => "bx",
+                Address::DirectBP => "bp",
+            },
+            match (self.disp1, self.disp2) {
+                (None, _) => "".to_string(),
+                (Some(disp1), None) => {
+                    if disp1 == 0 {
+                        "".to_string()
+                    } else {
+                        format!(" + {}", disp1)
+                    }
+                }
+                (Some(disp1), Some(disp2)) => {
+                    let disp = (disp2 as u16) << 8 | (disp1 as u16);
+                    if disp == 0 {
+                        "".to_string()
+                    } else {
+                        format!(" + {}", disp)
+                    }
+                }
+            }
+        )
+    }
+}
+
+impl fmt::Display for Register {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
@@ -82,15 +215,16 @@ impl fmt::Display for FieldEncoding {
     }
 }
 
-pub struct Inst {
-    name: String,
-    lhs: FieldEncoding,
-    rhs: FieldEncoding,
-}
-
-impl Inst {
-    pub fn new(name: String, lhs: FieldEncoding, rhs: FieldEncoding) -> Self {
-        Self { name, lhs, rhs }
+impl fmt::Display for Encoding {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Register(r) => r.to_string(),
+                Self::EffectiveAddress(e) => e.to_string(),
+            }
+        )
     }
 }
 

@@ -2,7 +2,7 @@
 
 SHELL=/bin/bash
 
-files=$(wildcard ./sim8086/src/*/*.rs ./sim8086/srs/*/*/*.rs)
+files=$(wildcard ./sim8086/src/*.rs ./sim8086/src/*/*.rs)
 
 sim8086.bin: $(files)
 	@echo $(files)

@@ -32,7 +32,7 @@ readObj()
 
 diffDelta()
 {
-  diff -u <(echo "$1") <(echo "$2") | delta --color-only --side-by-side
+  diff -u <(echo "$1") <(echo "$2") | delta --color-only
 }
 
 diffSourceWithParsed()
