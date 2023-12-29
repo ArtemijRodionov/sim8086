@@ -6,8 +6,11 @@ use sim8086;
 struct Mov(Vec<u8>);
 
 impl Mov {
-    fn new() -> Self {
-        Self(Vec::with_capacity(6))
+    fn new(first: u8, second: u8) -> Self {
+        let mut v = Vec::with_capacity(6);
+        v.push(first);
+        v.push(second);
+        Self(v)
     }
     fn w(&self) -> u8 {
         self.0[0] & 0b1
@@ -29,7 +32,7 @@ impl Mov {
         use sim8086::{Address, Mode};
         match Mode::from(self.mode()) {
             Mode::Mem0Disp => {
-                if let Address::DirectBP = Address::from(self.reg()) {
+                if let Address::DirectBP = Address::from(self.rm()) {
                     2
                 } else {
                     0
@@ -86,24 +89,18 @@ fn is_mov(i: u8) -> bool {
 
 fn parse(mut it: impl Iterator<Item = u8>) -> Vec<Result<Mov, sim8086::Error>> {
     let mut ops = vec![];
+
     while let Some(first) = it.next() {
         if is_mov(first) {
-            let mov = it
-                .next()
-                .and_then(|second| {
-                    let mut mov = Mov::new();
-                    mov.write(first);
-                    mov.write(second);
-                    for _ in 0..mov.to_write() {
-                        mov.write(it.next()?);
-                    }
-
-                    Some(mov)
-                })
-                .ok_or(sim8086::Error);
-            ops.push(mov)
+            let second = it.next().unwrap();
+            let mut mov = Mov::new(first, second);
+            for _ in 0..mov.to_write() {
+                let Some(data) = it.next() else { panic!() };
+                mov.write(data);
+            }
+            ops.push(Ok(mov));
         } else {
-            ops.push(Err(sim8086::Error))
+            ops.push(Err(sim8086::Error));
         }
     }
 
