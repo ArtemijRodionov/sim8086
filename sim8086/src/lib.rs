@@ -74,18 +74,16 @@ impl Address {
 #[derive(Debug, Clone, Copy)]
 pub struct EffectiveAddress {
     address: Address,
-    direct: Option<u8>,
-    disp1: Option<u8>,
-    disp2: Option<u8>,
+    direct: Option<u16>,
+    disp: Option<u16>,
 }
 
 impl EffectiveAddress {
-    fn new(address: Address, direct: Option<u8>, disp1: Option<u8>, disp2: Option<u8>) -> Self {
+    fn new(address: Address, direct: Option<u16>, disp: Option<u16>) -> Self {
         Self {
             address,
             direct,
-            disp1,
-            disp2,
+            disp,
         }
     }
 }
@@ -125,13 +123,8 @@ impl Encoding {
         Self::Register(Register::from(reg, w))
     }
 
-    pub fn effective_address(
-        address: Address,
-        direct: Option<u8>,
-        disp1: Option<u8>,
-        disp2: Option<u8>,
-    ) -> Self {
-        Self::EffectiveAddress(EffectiveAddress::new(address, direct, disp1, disp2))
+    pub fn effective_address(address: Address, direct: Option<u16>, disp: Option<u16>) -> Self {
+        Self::EffectiveAddress(EffectiveAddress::new(address, direct, disp))
     }
 }
 
@@ -166,23 +159,9 @@ impl fmt::Display for EffectiveAddress {
                 Address::BX => "bx",
                 Address::DirectBP => "bp",
             },
-            match (self.disp1, self.disp2) {
-                (None, _) => "".to_string(),
-                (Some(disp1), None) => {
-                    if disp1 == 0 {
-                        "".to_string()
-                    } else {
-                        format!(" + {}", disp1)
-                    }
-                }
-                (Some(disp1), Some(disp2)) => {
-                    let disp = (disp2 as u16) << 8 | (disp1 as u16);
-                    if disp == 0 {
-                        "".to_string()
-                    } else {
-                        format!(" + {}", disp)
-                    }
-                }
+            match self.disp {
+                None | Some(0) => "".to_string(),
+                Some(disp) => format!(" + {}", disp),
             }
         )
     }

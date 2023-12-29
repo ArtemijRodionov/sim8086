@@ -30,7 +30,7 @@ impl Mov {
         match Mode::from(self.mode()) {
             Mode::Mem0Disp => {
                 if let Address::DirectBP = Address::from(self.reg()) {
-                    1
+                    2
                 } else {
                     0
                 }
@@ -56,17 +56,18 @@ impl Mov {
                 let address = Address::from(self.rm());
                 let mut direct = None;
                 if matches!(address, Address::DirectBP) {
-                    direct = Some(self.0[2])
+                    direct = Some((self.0[3] as u16) << 8 | (self.0[2] as u16));
                 }
-                Encoding::effective_address(address, direct, None, None)
+                Encoding::effective_address(address, direct, None)
             }
             Mode::Mem1Disp => {
                 let address = Address::from(self.rm());
-                Encoding::effective_address(address, None, Some(self.0[2]), None)
+                Encoding::effective_address(address, None, Some(self.0[2] as u16))
             }
             Mode::Mem2Disp => {
                 let address = Address::from(self.rm());
-                Encoding::effective_address(address, None, Some(self.0[2]), Some(self.0[3]))
+                let disp = (self.0[3] as u16) << 8 | (self.0[2] as u16);
+                Encoding::effective_address(address, None, Some(disp))
             }
         };
 
