@@ -22,13 +22,13 @@ mov dh, al
 
 ; 8-bit immediate-to-register
 mov cl, 12
-mov ch, -12
+mov ch, 244
 
 ; 16-bit immediate-to-register
 mov cx, 12
-mov cx, -12
+mov cx, 65524
 mov dx, 3948
-mov dx, -3948
+mov dx, 61588
 
 ; Source address calculation
 mov al, [bx + si]
