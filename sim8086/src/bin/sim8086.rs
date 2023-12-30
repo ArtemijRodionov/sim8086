@@ -2,7 +2,7 @@ use std::env::args;
 
 use sim8086;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct MovRM(Vec<u8>);
 
 impl MovRM {
@@ -57,27 +57,28 @@ impl MovRM {
     }
 
     fn encode(&self) -> sim8086::Inst {
-        use sim8086::*;
+        use sim8086::{Address, Encoding, Inst, Mode};
 
         let mut src = Encoding::register(self.reg(), self.w());
         let mut dst = match Mode::from(self.mode()) {
             Mode::Reg => Encoding::register(self.rm(), self.w()),
             Mode::Mem0Disp => {
                 let address = Address::from(self.rm());
-                let mut direct = None;
                 if matches!(address, Address::DirectBP) {
-                    direct = Some((self.0[3] as u16) << 8 | (self.0[2] as u16));
+                    let direct = (self.0[3] as u16) << 8 | (self.0[2] as u16);
+                    Encoding::Direct(direct)
+                } else {
+                    Encoding::effective_address(address, 0)
                 }
-                Encoding::effective_address(address, direct, None)
             }
             Mode::Mem1Disp => {
                 let address = Address::from(self.rm());
-                Encoding::effective_address(address, None, Some(self.0[2] as u16))
+                Encoding::effective_address(address, self.0[2] as u16)
             }
             Mode::Mem2Disp => {
                 let address = Address::from(self.rm());
                 let disp = (self.0[3] as u16) << 8 | (self.0[2] as u16);
-                Encoding::effective_address(address, None, Some(disp))
+                Encoding::effective_address(address, disp)
             }
         };
 
@@ -86,10 +87,11 @@ impl MovRM {
         };
 
         let name = "mov".to_string();
-        sim8086::Inst::new(name, dst, src)
+        Inst::new(name, dst, src)
     }
 }
 
+#[derive(Debug)]
 struct MovIR(Vec<u8>);
 
 impl MovIR {
@@ -101,10 +103,13 @@ impl MovIR {
     fn w(&self) -> u8 {
         (self.0[0] >> 3) & 0b1
     }
+    fn reg(&self) -> u8 {
+        self.0[0] & 0b111
+    }
     fn to_write(&self) -> usize {
         if self.0.len() == 1 {
             1
-        } else if self.w() == 1 {
+        } else if self.w() == 1 && self.0.len() == 2 {
             1
         } else {
             0
@@ -113,21 +118,35 @@ impl MovIR {
     fn write(&mut self, data: u8) {
         self.0.push(data);
     }
+    fn encode(&self) -> sim8086::Inst {
+        use sim8086::{Encoding, Inst};
+
+        let dst = Encoding::register(self.reg(), self.w());
+        let src = Encoding::immediate(if self.w() == 1 {
+            ((self.0[2] as u16) << 8) | self.0[1] as u16
+        } else {
+            self.0[1] as u16
+        });
+
+        let name = "mov".to_string();
+        Inst::new(name, dst, src)
+    }
 }
 
+#[derive(Debug)]
 enum Mov {
     RM(MovRM),
     IR(MovIR),
 }
 
 impl Mov {
-    fn new(first: u8) -> Self {
+    fn get_mov(first: u8) -> Option<Self> {
         if ((first >> 2) ^ 0b100010) == 0 {
-            Self::RM(MovRM::new(first))
+            Some(Self::RM(MovRM::new(first)))
         } else if ((first >> 4) ^ 0b1011) == 0 {
-            Self::IR(MovIR::new(first))
+            Some(Self::IR(MovIR::new(first)))
         } else {
-            unimplemented!()
+            None
         }
     }
 
@@ -144,32 +163,38 @@ impl Mov {
             Self::IR(r) => r.write(data),
         }
     }
+
+    fn encode(&self) -> sim8086::Inst {
+        match self {
+            Self::RM(r) => r.encode(),
+            Self::IR(r) => r.encode(),
+        }
+    }
 }
 
-fn is_mov(i: u8) -> bool {
-    ((i >> 2) ^ 0b100010) == 0
-}
-
-fn parse(mut it: impl Iterator<Item = u8>) -> Vec<Result<MovRM, sim8086::Error>> {
+fn parse(mut it: impl Iterator<Item = u8>) -> Vec<Result<Mov, sim8086::Error>> {
     let mut ops = vec![];
 
     while let Some(first) = it.next() {
-        if is_mov(first) {
-            let mut mov = MovRM::new(first);
-            loop {
-                let w = mov.to_write();
-                if w == 0 {
-                    break;
-                }
-                for _ in 0..w {
-                    let Some(data) = it.next() else { panic!() };
-                    mov.write(data);
-                }
-            }
-            ops.push(Ok(mov));
-        } else {
+        let Some(mut mov) = Mov::get_mov(first) else {
             ops.push(Err(sim8086::Error));
+            break;
+        };
+
+        loop {
+            let w = mov.to_write();
+            if w == 0 {
+                break;
+            }
+            for _ in 0..w {
+                let Some(data) = it.next() else {
+                    dbg!(mov);
+                    panic!()
+                };
+                mov.write(data);
+            }
         }
+        ops.push(Ok(mov));
     }
 
     ops

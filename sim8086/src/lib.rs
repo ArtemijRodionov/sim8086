@@ -43,6 +43,30 @@ pub enum Register {
     DI,
 }
 
+impl Register {
+    fn from(reg: u8, w: u8) -> Self {
+        match (reg & 0b111, w & 0b1) {
+            (0b000, 0b0) => Self::AL,
+            (0b001, 0b0) => Self::CL,
+            (0b010, 0b0) => Self::DL,
+            (0b011, 0b0) => Self::BL,
+            (0b100, 0b0) => Self::AH,
+            (0b101, 0b0) => Self::CH,
+            (0b110, 0b0) => Self::DH,
+            (0b111, 0b0) => Self::BH,
+            (0b000, 0b1) => Self::AX,
+            (0b001, 0b1) => Self::CX,
+            (0b010, 0b1) => Self::DX,
+            (0b011, 0b1) => Self::BX,
+            (0b100, 0b1) => Self::SP,
+            (0b101, 0b1) => Self::BP,
+            (0b110, 0b1) => Self::SI,
+            (0b111, 0b1) => Self::DI,
+            _ => unreachable!(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum Address {
     BXSI,
@@ -74,57 +98,38 @@ impl Address {
 #[derive(Debug, Clone, Copy)]
 pub struct EffectiveAddress {
     address: Address,
-    direct: Option<u16>,
-    disp: Option<u16>,
+    disp: u16,
 }
 
 impl EffectiveAddress {
-    fn new(address: Address, direct: Option<u16>, disp: Option<u16>) -> Self {
-        Self {
-            address,
-            direct,
-            disp,
-        }
-    }
-}
-
-impl Register {
-    fn from(reg: u8, w: u8) -> Self {
-        match (reg & 0b111, w & 0b1) {
-            (0b000, 0b0) => Self::AL,
-            (0b001, 0b0) => Self::CL,
-            (0b010, 0b0) => Self::DL,
-            (0b011, 0b0) => Self::BL,
-            (0b100, 0b0) => Self::AH,
-            (0b101, 0b0) => Self::CH,
-            (0b110, 0b0) => Self::DH,
-            (0b111, 0b0) => Self::BH,
-            (0b000, 0b1) => Self::AX,
-            (0b001, 0b1) => Self::CX,
-            (0b010, 0b1) => Self::DX,
-            (0b011, 0b1) => Self::BX,
-            (0b100, 0b1) => Self::SP,
-            (0b101, 0b1) => Self::BP,
-            (0b110, 0b1) => Self::SI,
-            (0b111, 0b1) => Self::DI,
-            _ => unreachable!(),
-        }
+    fn new(address: Address, disp: u16) -> Self {
+        Self { address, disp }
     }
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum Encoding {
+    Direct(u16),
+    Immediate(u16),
     Register(Register),
     EffectiveAddress(EffectiveAddress),
 }
 
 impl Encoding {
+    pub fn immediate(value: u16) -> Self {
+        Self::Immediate(value)
+    }
+
+    pub fn direct(direct: u16) -> Self {
+        Self::Direct(direct)
+    }
+
     pub fn register(reg: u8, w: u8) -> Self {
         Self::Register(Register::from(reg, w))
     }
 
-    pub fn effective_address(address: Address, direct: Option<u16>, disp: Option<u16>) -> Self {
-        Self::EffectiveAddress(EffectiveAddress::new(address, direct, disp))
+    pub fn effective_address(address: Address, disp: u16) -> Self {
+        Self::EffectiveAddress(EffectiveAddress::new(address, disp))
     }
 }
 
@@ -142,10 +147,6 @@ impl Inst {
 
 impl fmt::Display for EffectiveAddress {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if let Some(val) = self.direct {
-            return write!(f, "[{}]", val.to_string());
-        }
-
         write!(
             f,
             "[{}{}]",
@@ -160,8 +161,8 @@ impl fmt::Display for EffectiveAddress {
                 Address::DirectBP => "bp",
             },
             match self.disp {
-                None | Some(0) => "".to_string(),
-                Some(disp) => format!(" + {}", disp),
+                0 => "".to_string(),
+                disp => format!(" + {}", disp),
             }
         )
     }
@@ -200,6 +201,8 @@ impl fmt::Display for Encoding {
             f,
             "{}",
             match self {
+                Self::Immediate(e) => e.to_string(),
+                Self::Direct(e) => format!("[{}]", e),
                 Self::Register(r) => r.to_string(),
                 Self::EffectiveAddress(e) => e.to_string(),
             }
