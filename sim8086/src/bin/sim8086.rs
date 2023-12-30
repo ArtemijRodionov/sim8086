@@ -3,13 +3,12 @@ use std::env::args;
 use sim8086;
 
 #[derive(Debug, Clone)]
-struct Mov(Vec<u8>);
+struct MovRM(Vec<u8>);
 
-impl Mov {
-    fn new(first: u8, second: u8) -> Self {
+impl MovRM {
+    fn new(first: u8) -> Self {
         let mut v = Vec::with_capacity(6);
         v.push(first);
-        v.push(second);
         Self(v)
     }
     fn w(&self) -> u8 {
@@ -30,7 +29,11 @@ impl Mov {
 
     fn to_write(&self) -> usize {
         use sim8086::{Address, Mode};
-        match Mode::from(self.mode()) {
+        if self.0.len() == 1 {
+            return 1;
+        }
+
+        let to_write = match Mode::from(self.mode()) {
             Mode::Mem0Disp => {
                 if let Address::DirectBP = Address::from(self.rm()) {
                     2
@@ -41,7 +44,11 @@ impl Mov {
             Mode::Mem1Disp => 1,
             Mode::Mem2Disp => 2,
             _ => 0,
+        };
+        if to_write + 2 == self.0.len() {
+            return 0;
         }
+        to_write
     }
 
     fn write(&mut self, data: u8) {
@@ -83,20 +90,81 @@ impl Mov {
     }
 }
 
+struct MovIR(Vec<u8>);
+
+impl MovIR {
+    fn new(first: u8) -> Self {
+        let mut v = Vec::with_capacity(3);
+        v.push(first);
+        Self(v)
+    }
+    fn w(&self) -> u8 {
+        (self.0[0] >> 3) & 0b1
+    }
+    fn to_write(&self) -> usize {
+        if self.0.len() == 1 {
+            1
+        } else if self.w() == 1 {
+            1
+        } else {
+            0
+        }
+    }
+    fn write(&mut self, data: u8) {
+        self.0.push(data);
+    }
+}
+
+enum Mov {
+    RM(MovRM),
+    IR(MovIR),
+}
+
+impl Mov {
+    fn new(first: u8) -> Self {
+        if ((first >> 2) ^ 0b100010) == 0 {
+            Self::RM(MovRM::new(first))
+        } else if ((first >> 4) ^ 0b1011) == 0 {
+            Self::IR(MovIR::new(first))
+        } else {
+            unimplemented!()
+        }
+    }
+
+    fn to_write(&self) -> usize {
+        match self {
+            Self::RM(r) => r.to_write(),
+            Self::IR(r) => r.to_write(),
+        }
+    }
+
+    fn write(&mut self, data: u8) {
+        match self {
+            Self::RM(r) => r.write(data),
+            Self::IR(r) => r.write(data),
+        }
+    }
+}
+
 fn is_mov(i: u8) -> bool {
     ((i >> 2) ^ 0b100010) == 0
 }
 
-fn parse(mut it: impl Iterator<Item = u8>) -> Vec<Result<Mov, sim8086::Error>> {
+fn parse(mut it: impl Iterator<Item = u8>) -> Vec<Result<MovRM, sim8086::Error>> {
     let mut ops = vec![];
 
     while let Some(first) = it.next() {
         if is_mov(first) {
-            let second = it.next().unwrap();
-            let mut mov = Mov::new(first, second);
-            for _ in 0..mov.to_write() {
-                let Some(data) = it.next() else { panic!() };
-                mov.write(data);
+            let mut mov = MovRM::new(first);
+            loop {
+                let w = mov.to_write();
+                if w == 0 {
+                    break;
+                }
+                for _ in 0..w {
+                    let Some(data) = it.next() else { panic!() };
+                    mov.write(data);
+                }
             }
             ops.push(Ok(mov));
         } else {
