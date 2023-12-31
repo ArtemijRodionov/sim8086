@@ -206,6 +206,9 @@ impl MovMA {
     fn w(&self) -> u8 {
         self.0[0] & 0b1
     }
+    fn d(&self) -> u8 {
+        (self.0[0] >> 1) & 0b1
+    }
     fn len(&self) -> usize {
         if self.0.len() == 1 {
             1
@@ -222,12 +225,16 @@ impl MovMA {
     fn decode(&self) -> sim8086::Inst {
         use sim8086::{Encoding, Inst};
 
-        let dst = Encoding::Accumulator;
-        let src = Encoding::Memory(if self.w() == 1 {
+        let mut dst = Encoding::Accumulator;
+        let mut src = Encoding::Memory(if self.w() == 1 {
             ((self.0[2] as u16) << 8) | self.0[1] as u16
         } else {
             self.0[1] as u16
         });
+
+        if self.d() == 1 {
+            (dst, src) = (src, dst);
+        };
 
         let name = "mov".to_string();
         Inst::new(name, dst, src)
@@ -250,7 +257,7 @@ impl Mov {
             Some(Self::IR(MovIR::new(first)))
         } else if ((first >> 1) ^ 0b1100011) == 0 {
             Some(Self::IRM(MovIRM::new(first)))
-        } else if ((first >> 1) ^ 0b1010000) == 0 {
+        } else if ((first >> 2) ^ 0b101000) == 0 {
             Some(Self::MA(MovMA::new(first)))
         } else {
             None
