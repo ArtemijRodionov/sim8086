@@ -109,7 +109,8 @@ impl EffectiveAddress {
 
 #[derive(Debug, Clone, Copy)]
 pub enum Encoding {
-    Direct(u16),
+    Accumulator,
+    Memory(u16),
     Immediate(u16),
     Register(Register),
     EffectiveAddress(EffectiveAddress),
@@ -121,7 +122,7 @@ impl Encoding {
     }
 
     pub fn direct(direct: u16) -> Self {
-        Self::Direct(direct)
+        Self::Memory(direct)
     }
 
     pub fn register(reg: u8, w: u8) -> Self {
@@ -201,8 +202,9 @@ impl fmt::Display for Encoding {
             f,
             "{}",
             match self {
+                Self::Accumulator => "ax".to_string(),
                 Self::Immediate(e) => e.to_string(),
-                Self::Direct(e) => format!("[{}]", e),
+                Self::Memory(e) => format!("[{}]", e),
                 Self::Register(r) => r.to_string(),
                 Self::EffectiveAddress(e) => e.to_string(),
             }
