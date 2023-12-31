@@ -178,7 +178,7 @@ fn parse(mut it: impl Iterator<Item = u8>) -> Vec<Result<Mov, sim8086::Error>> {
     while let Some(first) = it.next() {
         let Some(mut mov) = Mov::get_mov(first) else {
             ops.push(Err(sim8086::Error));
-            break;
+            continue;
         };
 
         loop {
