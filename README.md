@@ -1,8 +1,10 @@
-# Intel manual
-https://edge.edx.org/c4x/BITSPilani/EEE231/asset/8086_family_Users_Manual_1_.pdf
+# Tests
+1. Download assembly source code from https://github.com/cmuratori/computer_enhance/tree/main/perfaware/part1
+2. Put source code to data/
+3. Run `make test-e2e`
 
-# Source
-https://github.com/cmuratori/computer_enhance/tree/main/perfaware/part1
+# Intel 8086 manual
+https://edge.edx.org/c4x/BITSPilani/EEE231/asset/8086_family_Users_Manual_1_.pdf
 
 # TOC
 https://www.computerenhance.com/p/table-of-contents
