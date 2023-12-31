@@ -68,7 +68,7 @@ impl MovRM {
         self.0[1] & 0b111
     }
 
-    fn to_write(&self) -> usize {
+    fn len(&self) -> usize {
         if self.0.len() == 1 {
             return 1;
         }
@@ -80,12 +80,12 @@ impl MovRM {
         }
     }
 
-    fn write(&mut self, data: u8) {
+    fn push(&mut self, data: u8) {
         assert!(self.0.len() <= 6);
         self.0.push(data);
     }
 
-    fn encode(&self) -> sim8086::Inst {
+    fn decode(&self) -> sim8086::Inst {
         use sim8086::{Encoding, Inst};
 
         let mut src = Encoding::register(self.reg(), self.w());
@@ -118,7 +118,7 @@ impl MovIRM {
     fn mode(&self) -> u8 {
         (self.0[1] >> 6) & 0b11
     }
-    fn to_write(&self) -> usize {
+    fn len(&self) -> usize {
         if self.0.len() == 1 {
             1
         } else if self.0.len() == 2 {
@@ -129,11 +129,11 @@ impl MovIRM {
             0
         }
     }
-    fn write(&mut self, data: u8) {
+    fn push(&mut self, data: u8) {
         assert!(self.0.len() < 6);
         self.0.push(data);
     }
-    fn encode(&self) -> sim8086::Inst {
+    fn decode(&self) -> sim8086::Inst {
         use sim8086::{Encoding, Inst, Mode};
         let data_idx = match Mode::from(self.mode()) {
             Mode::Reg | Mode::Mem0Disp => 2,
@@ -167,7 +167,7 @@ impl MovIR {
     fn reg(&self) -> u8 {
         self.0[0] & 0b111
     }
-    fn to_write(&self) -> usize {
+    fn len(&self) -> usize {
         if self.0.len() == 1 {
             1
         } else if self.w() == 1 && self.0.len() == 2 {
@@ -176,10 +176,10 @@ impl MovIR {
             0
         }
     }
-    fn write(&mut self, data: u8) {
+    fn push(&mut self, data: u8) {
         self.0.push(data);
     }
-    fn encode(&self) -> sim8086::Inst {
+    fn decode(&self) -> sim8086::Inst {
         use sim8086::{Encoding, Inst};
 
         let dst = Encoding::register(self.reg(), self.w());
@@ -214,27 +214,27 @@ impl Mov {
         }
     }
 
-    fn to_write(&self) -> usize {
+    fn len(&self) -> usize {
         match self {
-            Self::RM(r) => r.to_write(),
-            Self::IR(r) => r.to_write(),
-            Self::IRM(r) => r.to_write(),
+            Self::RM(r) => r.len(),
+            Self::IR(r) => r.len(),
+            Self::IRM(r) => r.len(),
         }
     }
 
-    fn write(&mut self, data: u8) {
+    fn push(&mut self, data: u8) {
         match self {
-            Self::RM(r) => r.write(data),
-            Self::IR(r) => r.write(data),
-            Self::IRM(r) => r.write(data),
+            Self::RM(r) => r.push(data),
+            Self::IR(r) => r.push(data),
+            Self::IRM(r) => r.push(data),
         }
     }
 
-    fn encode(&self) -> sim8086::Inst {
+    fn decode(&self) -> sim8086::Inst {
         match self {
-            Self::RM(r) => r.encode(),
-            Self::IR(r) => r.encode(),
-            Self::IRM(r) => r.encode(),
+            Self::RM(r) => r.decode(),
+            Self::IR(r) => r.decode(),
+            Self::IRM(r) => r.decode(),
         }
     }
 }
@@ -250,7 +250,7 @@ fn parse(mut it: impl Iterator<Item = u8>) -> Vec<Result<Mov, sim8086::Error>> {
         };
 
         loop {
-            let w = mov.to_write();
+            let w = mov.len();
             if w == 0 {
                 break;
             }
@@ -259,7 +259,7 @@ fn parse(mut it: impl Iterator<Item = u8>) -> Vec<Result<Mov, sim8086::Error>> {
                     dbg!(mov);
                     panic!()
                 };
-                mov.write(data);
+                mov.push(data);
             }
         }
         ops.push(Ok(mov));
@@ -274,7 +274,7 @@ fn main() {
         .expect("Provide unix path to 8086 binary file");
     let data = std::fs::read(path).expect("Can't open given file");
     for op in parse(data.into_iter()) {
-        match op.map_err(|_| "").and_then(|x| Ok(x.encode())) {
+        match op.and_then(|x| Ok(x.decode())) {
             Ok(op) => println!("{}", op.to_string()),
             Err(_) => continue,
         };
