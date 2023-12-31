@@ -112,15 +112,13 @@ pub enum Encoding {
     Accumulator,
     Memory(u16),
     Immediate(u16),
+    Immediate8ToMem(u8),
+    Immediate16ToMem(u16),
     Register(Register),
     EffectiveAddress(EffectiveAddress),
 }
 
 impl Encoding {
-    pub fn immediate(value: u16) -> Self {
-        Self::Immediate(value)
-    }
-
     pub fn direct(direct: u16) -> Self {
         Self::Memory(direct)
     }
@@ -204,6 +202,8 @@ impl fmt::Display for Encoding {
             match self {
                 Self::Accumulator => "ax".to_string(),
                 Self::Immediate(e) => e.to_string(),
+                Self::Immediate8ToMem(e) => format!("byte {}", e),
+                Self::Immediate16ToMem(e) => format!("word {}", e),
                 Self::Memory(e) => format!("[{}]", e),
                 Self::Register(r) => r.to_string(),
                 Self::EffectiveAddress(e) => e.to_string(),

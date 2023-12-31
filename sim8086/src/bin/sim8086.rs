@@ -140,11 +140,13 @@ impl MovIRM {
             Mode::Mem1Disp => 3,
             Mode::Mem2Disp => 4,
         };
-        let src = Encoding::immediate(if self.w() == 1 {
-            ((self.0[data_idx + 1] as u16) << 8) | self.0[data_idx] as u16
+        let src = if self.w() == 1 {
+            Encoding::Immediate16ToMem(
+                ((self.0[data_idx + 1] as u16) << 8) | self.0[data_idx] as u16,
+            )
         } else {
-            self.0[data_idx] as u16
-        });
+            Encoding::Immediate8ToMem(self.0[data_idx])
+        };
         let dst = mov_mode_encode(&self.0, self.mode(), self.rm(), self.w());
 
         let name = "mov".to_string();
@@ -183,7 +185,7 @@ impl MovIR {
         use sim8086::{Encoding, Inst};
 
         let dst = Encoding::register(self.reg(), self.w());
-        let src = Encoding::immediate(if self.w() == 1 {
+        let src = Encoding::Immediate(if self.w() == 1 {
             ((self.0[2] as u16) << 8) | self.0[1] as u16
         } else {
             self.0[1] as u16
