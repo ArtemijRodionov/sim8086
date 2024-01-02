@@ -1,7 +1,7 @@
 use std::fmt;
 
 #[derive(Debug)]
-pub struct Error;
+pub struct Error(pub String);
 
 #[derive(Debug, Clone, Copy)]
 pub enum Mode {
