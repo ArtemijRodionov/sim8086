@@ -98,11 +98,11 @@ impl Address {
 #[derive(Debug, Clone, Copy)]
 pub struct EffectiveAddress {
     address: Address,
-    disp: u16,
+    disp: i16,
 }
 
 impl EffectiveAddress {
-    fn new(address: Address, disp: u16) -> Self {
+    fn new(address: Address, disp: i16) -> Self {
         Self { address, disp }
     }
 }
@@ -127,7 +127,7 @@ impl Encoding {
         Self::Register(Register::from(reg, w))
     }
 
-    pub fn effective_address(address: Address, disp: u16) -> Self {
+    pub fn effective_address(address: Address, disp: i16) -> Self {
         Self::EffectiveAddress(EffectiveAddress::new(address, disp))
     }
 }
@@ -161,7 +161,8 @@ impl fmt::Display for EffectiveAddress {
             },
             match self.disp {
                 0 => "".to_string(),
-                disp => format!(" + {}", disp),
+                1.. => format!(" + {}", self.disp),
+                _ => format!(" - {}", -self.disp),
             }
         )
     }

@@ -33,11 +33,11 @@ fn mov_mode_encode(data: &Vec<u8>, mode: u8, rm: u8, w: u8) -> sim8086::Encoding
         }
         Mode::Mem1Disp => {
             let address = Address::from(rm);
-            Encoding::effective_address(address, data[2] as u16)
+            Encoding::effective_address(address, (data[2] as i8) as i16)
         }
         Mode::Mem2Disp => {
             let address = Address::from(rm);
-            let disp = (data[3] as u16) << 8 | (data[2] as u16);
+            let disp = (data[3] as i16) << 8 | (data[2] as i16);
             Encoding::effective_address(address, disp)
         }
     }
