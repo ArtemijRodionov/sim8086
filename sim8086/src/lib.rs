@@ -108,17 +108,15 @@ impl EffectiveAddress {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum Encoding {
+pub enum OperandEncoding {
     Accumulator,
     Memory(u16),
     Immediate(u16),
-    Immediate8ToMem(u8),
-    Immediate16ToMem(u16),
     Register(Register),
     EffectiveAddress(EffectiveAddress),
 }
 
-impl Encoding {
+impl OperandEncoding {
     pub fn direct(direct: u16) -> Self {
         Self::Memory(direct)
     }
@@ -130,6 +128,13 @@ impl Encoding {
     pub fn effective_address(address: Address, disp: i16) -> Self {
         Self::EffectiveAddress(EffectiveAddress::new(address, disp))
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Encoding {
+    Operand(OperandEncoding),
+    Byte(OperandEncoding),
+    Word(OperandEncoding),
 }
 
 pub struct Inst {
@@ -195,7 +200,7 @@ impl fmt::Display for Register {
     }
 }
 
-impl fmt::Display for Encoding {
+impl fmt::Display for OperandEncoding {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
@@ -203,11 +208,23 @@ impl fmt::Display for Encoding {
             match self {
                 Self::Accumulator => "ax".to_string(),
                 Self::Immediate(e) => e.to_string(),
-                Self::Immediate8ToMem(e) => format!("byte {}", e),
-                Self::Immediate16ToMem(e) => format!("word {}", e),
                 Self::Memory(e) => format!("[{}]", e),
                 Self::Register(r) => r.to_string(),
                 Self::EffectiveAddress(e) => e.to_string(),
+            }
+        )
+    }
+}
+
+impl fmt::Display for Encoding {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Operand(o) => o.to_string(),
+                Self::Byte(o) => format!("byte {}", o),
+                Self::Word(o) => format!("word {}", o),
             }
         )
     }

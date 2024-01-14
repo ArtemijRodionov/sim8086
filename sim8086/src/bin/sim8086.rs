@@ -18,27 +18,27 @@ fn mode_to_write(rm: u8, mode: u8) -> usize {
     }
 }
 
-fn mode_encode(data: &Vec<u8>, mode: u8, rm: u8, w: u8) -> sim8086::Encoding {
-    use sim8086::{Address, Encoding, Mode};
+fn mode_encode(data: &Vec<u8>, mode: u8, rm: u8, w: u8) -> sim8086::OperandEncoding {
+    use sim8086::{Address, Mode, OperandEncoding};
     match Mode::from(mode) {
-        Mode::Reg => Encoding::register(rm, w),
+        Mode::Reg => OperandEncoding::register(rm, w),
         Mode::Mem0Disp => {
             let address = Address::from(rm);
             if matches!(address, Address::DirectBP) {
                 let direct = (data[3] as u16) << 8 | (data[2] as u16);
-                Encoding::Memory(direct)
+                OperandEncoding::Memory(direct)
             } else {
-                Encoding::effective_address(address, 0)
+                OperandEncoding::effective_address(address, 0)
             }
         }
         Mode::Mem1Disp => {
             let address = Address::from(rm);
-            Encoding::effective_address(address, (data[2] as i8) as i16)
+            OperandEncoding::effective_address(address, (data[2] as i8) as i16)
         }
         Mode::Mem2Disp => {
             let address = Address::from(rm);
             let disp = (data[3] as i16) << 8 | (data[2] as i16);
-            Encoding::effective_address(address, disp)
+            OperandEncoding::effective_address(address, disp)
         }
     }
 }
@@ -108,9 +108,9 @@ impl RM {
     }
 
     fn decode(&self) -> sim8086::Inst {
-        use sim8086::{Encoding, Inst};
+        use sim8086::{Encoding, Inst, OperandEncoding};
 
-        let mut src = Encoding::register(self.reg(), self.w());
+        let mut src = OperandEncoding::register(self.reg(), self.w());
         let mut dst = mode_encode(&self.0, self.mode(), self.rm(), self.w());
 
         if self.d() == 0b1 {
@@ -118,7 +118,7 @@ impl RM {
         };
 
         let name = Self::find_name(self.0[0]).unwrap().to_string();
-        Inst::new(name, dst, src)
+        Inst::new(name, Encoding::Operand(dst), Encoding::Operand(src))
     }
 }
 
@@ -243,34 +243,34 @@ impl IRM {
         self.0.push(data);
     }
     fn decode(&self) -> sim8086::Inst {
-        use sim8086::{Encoding, Inst, Mode};
+        use sim8086::{Encoding, Inst, Mode, OperandEncoding};
+
         let mode = Mode::from(self.mode());
         let data_idx = match mode {
             Mode::Reg | Mode::Mem0Disp => 2,
             Mode::Mem1Disp => 3,
             Mode::Mem2Disp => 4,
         };
-        let immediate = if self.data_len() == 2 {
+
+        let src = Encoding::Operand(OperandEncoding::Immediate(if self.data_len() == 2 {
             ((self.0[data_idx + 1] as u16) << 8) | self.0[data_idx] as u16
         } else {
             self.0[data_idx] as u16
-        };
+        }));
 
-        let src = match (mode, self.data_len()) {
-            (Mode::Reg, _) => Encoding::Immediate(immediate),
-            (_, 1) => Encoding::Immediate8ToMem(immediate as u8),
-            (_, 2) => Encoding::Immediate16ToMem(immediate),
-            _ => unreachable!(),
+        let rm = mode_encode(&self.0, self.mode(), self.rm(), self.w());
+        let dst = match (mode, self.s(), self.w()) {
+            (Mode::Reg, _, _) => Encoding::Operand(rm),
+            (_, 1, 1) => Encoding::Word(rm),
+            (_, _, _) => Encoding::Byte(rm),
         };
-
-        let dst = mode_encode(&self.0, self.mode(), self.rm(), self.w());
 
         if matches!(
             IRMOpCode::with_reg(self.0[0], self.reg()),
-            IRMOpCode::Common(IRMCommonOpCode::Cmp)
+            IRMOpCode::Common(IRMCommonOpCode::Sub)
         ) {
             for x in self.0.clone() {
-                print!("{:b} ", x)
+                // print!("{:b} ", x)
             }
         }
 
@@ -309,17 +309,17 @@ impl IR {
         self.0.push(data);
     }
     fn decode(&self) -> sim8086::Inst {
-        use sim8086::{Encoding, Inst};
+        use sim8086::{Encoding, Inst, OperandEncoding};
 
-        let dst = Encoding::register(self.reg(), self.w());
-        let src = Encoding::Immediate(if self.w() == 1 {
+        let dst = OperandEncoding::register(self.reg(), self.w());
+        let src = OperandEncoding::Immediate(if self.w() == 1 {
             ((self.0[2] as u16) << 8) | self.0[1] as u16
         } else {
             self.0[1] as u16
         });
 
         let name = "mov".to_string();
-        Inst::new(name, dst, src)
+        Inst::new(name, Encoding::Operand(dst), Encoding::Operand(src))
     }
 }
 
@@ -352,10 +352,10 @@ impl MovMA {
         self.0.push(data);
     }
     fn decode(&self) -> sim8086::Inst {
-        use sim8086::{Encoding, Inst};
+        use sim8086::{Encoding, Inst, OperandEncoding};
 
-        let mut dst = Encoding::Accumulator;
-        let mut src = Encoding::Memory(if self.w() == 1 {
+        let mut dst = OperandEncoding::Accumulator;
+        let mut src = OperandEncoding::Memory(if self.w() == 1 {
             ((self.0[2] as u16) << 8) | self.0[1] as u16
         } else {
             self.0[1] as u16
@@ -366,7 +366,7 @@ impl MovMA {
         };
 
         let name = "mov".to_string();
-        Inst::new(name, dst, src)
+        Inst::new(name, Encoding::Operand(dst), Encoding::Operand(src))
     }
 }
 
