@@ -123,45 +123,77 @@ impl RM {
 }
 
 #[derive(Debug)]
-struct IRM(Vec<u8>);
-enum IRMOp {
-    Mov,
-    Other,
+enum IRMCommonOpCode {
+    TBD,
+    Cmp,
+    Add,
+    Sub,
 }
 
-impl IRMOp {
-    fn match_op(op: u8) -> Option<Self> {
+impl IRMCommonOpCode {
+    fn with_reg(reg: u8) -> Self {
+        if reg ^ 0b000 == 0 {
+            IRMCommonOpCode::Add
+        } else if reg ^ 0b101 == 0 {
+            IRMCommonOpCode::Sub
+        } else if reg ^ 0b111 == 0 {
+            IRMCommonOpCode::Cmp
+        } else {
+            unreachable!()
+        }
+    }
+    fn name(self) -> &'static str {
+        match self {
+            Self::Add => "add",
+            Self::Sub => "sub",
+            Self::Cmp => "cmp",
+            Self::TBD => unreachable!(),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct IRM(Vec<u8>);
+enum IRMOpCode {
+    Mov,
+    Common(IRMCommonOpCode),
+}
+
+impl IRMOpCode {
+    fn match_op(op: u8) -> bool {
+        Self::get(op).is_some()
+    }
+
+    fn get(op: u8) -> Option<Self> {
         if (op >> 1) ^ 0b1100011 == 0 {
             Some(Self::Mov)
         } else if (op >> 2) ^ 0b100000 == 0 {
-            Some(Self::Other)
+            Some(Self::Common(IRMCommonOpCode::TBD))
         } else {
             None
         }
     }
 
-    fn name(&self, reg: u8) -> &'static str {
+    fn with_reg(op: u8, reg: u8) -> Self {
+        let op = Self::get(op).unwrap();
+        match op {
+            Self::Mov => op,
+            Self::Common(IRMCommonOpCode::TBD) => Self::Common(IRMCommonOpCode::with_reg(reg)),
+            _ => unreachable!(),
+        }
+    }
+
+    fn name(self) -> &'static str {
         match self {
             Self::Mov => "mov",
-            Self::Other => {
-                if reg ^ 0b000 == 0 {
-                    "add"
-                } else if reg ^ 0b101 == 0 {
-                    "sub"
-                } else if reg ^ 0b111 == 0 {
-                    "cmp"
-                } else {
-                    // println!("{:b}", reg);
-                    unreachable!()
-                }
-            }
+            Self::Common(common) => common.name(),
         }
     }
 }
 
 impl IRM {
     fn match_op(op: u8) -> bool {
-        IRMOp::match_op(op).is_some()
+        IRMOpCode::match_op(op)
     }
 
     fn new(first: u8) -> Self {
@@ -185,8 +217,14 @@ impl IRM {
         (self.0[1] >> 6) & 0b11
     }
     fn data_len(&self) -> usize {
-        match (IRMOp::match_op(self.0[0]).unwrap(), self.w(), self.s()) {
-            (IRMOp::Mov, 1, _) | (IRMOp::Other, 1, 0) => 2,
+        match (
+            IRMOpCode::with_reg(self.0[0], self.reg()),
+            self.w(),
+            self.s(),
+        ) {
+            (IRMOpCode::Mov, 1, _) => 2,
+            (IRMOpCode::Common(IRMCommonOpCode::Add | IRMCommonOpCode::Sub), 1, 0) => 2,
+            (IRMOpCode::Common(IRMCommonOpCode::Cmp), 1, 1) => 2,
             (_, _, _) => 1,
         }
     }
@@ -221,14 +259,23 @@ impl IRM {
         let src = match (mode, self.data_len()) {
             (Mode::Reg, _) => Encoding::Immediate(immediate),
             (_, 1) => Encoding::Immediate8ToMem(immediate as u8),
-            (_, _) => Encoding::Immediate16ToMem(immediate),
+            (_, 2) => Encoding::Immediate16ToMem(immediate),
+            _ => unreachable!(),
         };
 
         let dst = mode_encode(&self.0, self.mode(), self.rm(), self.w());
 
-        let name = IRMOp::match_op(self.0[0])
-            .unwrap()
-            .name(self.reg())
+        if matches!(
+            IRMOpCode::with_reg(self.0[0], self.reg()),
+            IRMOpCode::Common(IRMCommonOpCode::Cmp)
+        ) {
+            for x in self.0.clone() {
+                print!("{:b} ", x)
+            }
+        }
+
+        let name = IRMOpCode::with_reg(self.0[0], self.reg())
+            .name()
             .to_string();
         Inst::new(name, dst, src)
     }
