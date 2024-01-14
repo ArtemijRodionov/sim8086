@@ -123,40 +123,13 @@ impl RM {
 }
 
 #[derive(Debug)]
-enum IRMCommonOpCode {
+struct IRM(Vec<u8>);
+enum IRMOpCode {
+    Mov,
     TBD,
     Cmp,
     Add,
     Sub,
-}
-
-impl IRMCommonOpCode {
-    fn with_reg(reg: u8) -> Self {
-        if reg ^ 0b000 == 0 {
-            IRMCommonOpCode::Add
-        } else if reg ^ 0b101 == 0 {
-            IRMCommonOpCode::Sub
-        } else if reg ^ 0b111 == 0 {
-            IRMCommonOpCode::Cmp
-        } else {
-            unreachable!()
-        }
-    }
-    fn name(self) -> &'static str {
-        match self {
-            Self::Add => "add",
-            Self::Sub => "sub",
-            Self::Cmp => "cmp",
-            Self::TBD => unreachable!(),
-        }
-    }
-}
-
-#[derive(Debug)]
-struct IRM(Vec<u8>);
-enum IRMOpCode {
-    Mov,
-    Common(IRMCommonOpCode),
 }
 
 impl IRMOpCode {
@@ -168,7 +141,7 @@ impl IRMOpCode {
         if (op >> 1) ^ 0b1100011 == 0 {
             Some(Self::Mov)
         } else if (op >> 2) ^ 0b100000 == 0 {
-            Some(Self::Common(IRMCommonOpCode::TBD))
+            Some(Self::TBD)
         } else {
             None
         }
@@ -178,7 +151,17 @@ impl IRMOpCode {
         let op = Self::get(op).unwrap();
         match op {
             Self::Mov => op,
-            Self::Common(IRMCommonOpCode::TBD) => Self::Common(IRMCommonOpCode::with_reg(reg)),
+            Self::TBD => {
+                if reg ^ 0b000 == 0 {
+                    Self::Add
+                } else if reg ^ 0b101 == 0 {
+                    Self::Sub
+                } else if reg ^ 0b111 == 0 {
+                    Self::Cmp
+                } else {
+                    unreachable!()
+                }
+            }
             _ => unreachable!(),
         }
     }
@@ -186,7 +169,10 @@ impl IRMOpCode {
     fn name(self) -> &'static str {
         match self {
             Self::Mov => "mov",
-            Self::Common(common) => common.name(),
+            Self::Add => "add",
+            Self::Sub => "sub",
+            Self::Cmp => "cmp",
+            Self::TBD => unreachable!(),
         }
     }
 }
@@ -223,8 +209,8 @@ impl IRM {
             self.s(),
         ) {
             (IRMOpCode::Mov, 1, _) => 2,
-            (IRMOpCode::Common(IRMCommonOpCode::Add | IRMCommonOpCode::Sub), 1, 0) => 2,
-            (IRMOpCode::Common(IRMCommonOpCode::Cmp), 1, 1) => 2,
+            (IRMOpCode::Add | IRMOpCode::Sub, 1, 0) => 2,
+            (IRMOpCode::Cmp, 1, 1) => 2,
             (_, _, _) => 1,
         }
     }
@@ -265,15 +251,6 @@ impl IRM {
             (_, _, _) => Encoding::Byte(rm),
         };
 
-        if matches!(
-            IRMOpCode::with_reg(self.0[0], self.reg()),
-            IRMOpCode::Common(IRMCommonOpCode::Sub)
-        ) {
-            for x in self.0.clone() {
-                // print!("{:b} ", x)
-            }
-        }
-
         let name = IRMOpCode::with_reg(self.0[0], self.reg())
             .name()
             .to_string();
@@ -285,6 +262,9 @@ impl IRM {
 struct IR(Vec<u8>);
 
 impl IR {
+    fn match_op(op: u8) -> bool {
+        ((op >> 4) ^ 0b1011) == 0
+    }
     fn new(first: u8) -> Self {
         let mut v = Vec::with_capacity(3);
         v.push(first);
@@ -323,10 +303,43 @@ impl IR {
     }
 }
 
-#[derive(Debug)]
-struct MovMA(Vec<u8>);
+enum MAOpCode {
+    Mov,
+    Add,
+    Sub,
+    Cmp,
+}
+impl MAOpCode {
+    fn from(op: u8) -> Option<Self> {
+        if ((op >> 2) ^ 0b101000) == 0 {
+            Some(Self::Mov)
+        } else if ((op >> 1) ^ 0b0000010) == 0 {
+            Some(Self::Add)
+        } else if ((op >> 1) ^ 0b0010110) == 0 {
+            Some(Self::Sub)
+        } else if ((op >> 1) ^ 0b0011110) == 0 {
+            Some(Self::Cmp)
+        } else {
+            None
+        }
+    }
+    fn name(self) -> &'static str {
+        match self {
+            Self::Mov => "mov",
+            Self::Add => "add",
+            Self::Sub => "sub",
+            Self::Cmp => "cmp",
+        }
+    }
+}
 
-impl MovMA {
+#[derive(Debug)]
+struct MA(Vec<u8>);
+
+impl MA {
+    fn match_op(op: u8) -> bool {
+        MAOpCode::from(op).is_some()
+    }
     fn new(first: u8) -> Self {
         let mut v = Vec::with_capacity(3);
         v.push(first);
@@ -353,19 +366,29 @@ impl MovMA {
     }
     fn decode(&self) -> sim8086::Inst {
         use sim8086::{Encoding, Inst, OperandEncoding};
+        let is_wide = self.w() == 1;
 
-        let mut dst = OperandEncoding::Accumulator;
-        let mut src = OperandEncoding::Memory(if self.w() == 1 {
-            ((self.0[2] as u16) << 8) | self.0[1] as u16
+        let (mut dst, src_val) = if is_wide {
+            let mem = ((self.0[2] as u16) << 8) | self.0[1] as u16;
+            (OperandEncoding::Accumulator16, mem)
         } else {
-            self.0[1] as u16
-        });
-
-        if self.d() == 1 {
-            (dst, src) = (src, dst);
+            let mem = self.0[1] as u16;
+            (OperandEncoding::Accumulator8, mem)
         };
 
-        let name = "mov".to_string();
+        let op_code = MAOpCode::from(self.0[0]).unwrap();
+        let src = if matches!(op_code, MAOpCode::Mov) {
+            let mut src = OperandEncoding::Memory(src_val);
+            if self.d() == 1 {
+                (dst, src) = (src, dst);
+            };
+
+            src
+        } else {
+            OperandEncoding::Immediate(src_val)
+        };
+
+        let name = op_code.name().to_string();
         Inst::new(name, Encoding::Operand(dst), Encoding::Operand(src))
     }
 }
@@ -375,19 +398,19 @@ enum Mov {
     RM(RM),
     IRM(IRM),
     IR(IR),
-    MA(MovMA),
+    MA(MA),
 }
 
 impl Mov {
     fn get_mov(first: u8) -> Option<Self> {
         if RM::match_op(first) {
             Some(Self::RM(RM::new(first)))
-        } else if ((first >> 4) ^ 0b1011) == 0 {
+        } else if IR::match_op(first) {
             Some(Self::IR(IR::new(first)))
         } else if IRM::match_op(first) {
             Some(Self::IRM(IRM::new(first)))
-        } else if ((first >> 2) ^ 0b101000) == 0 {
-            Some(Self::MA(MovMA::new(first)))
+        } else if MA::match_op(first) {
+            Some(Self::MA(MA::new(first)))
         } else {
             None
         }

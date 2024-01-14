@@ -109,7 +109,8 @@ impl EffectiveAddress {
 
 #[derive(Debug, Clone, Copy)]
 pub enum OperandEncoding {
-    Accumulator,
+    Accumulator8,
+    Accumulator16,
     Memory(u16),
     Immediate(u16),
     Register(Register),
@@ -206,7 +207,8 @@ impl fmt::Display for OperandEncoding {
             f,
             "{}",
             match self {
-                Self::Accumulator => "ax".to_string(),
+                Self::Accumulator8 => "al".to_string(),
+                Self::Accumulator16 => "ax".to_string(),
                 Self::Immediate(e) => e.to_string(),
                 Self::Memory(e) => format!("[{}]", e),
                 Self::Register(r) => r.to_string(),
