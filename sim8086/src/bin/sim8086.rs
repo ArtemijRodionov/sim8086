@@ -45,7 +45,6 @@ fn mode_encode(data: &Vec<u8>, mode: u8, rm: u8, w: u8) -> sim8086::OperandEncod
 
 #[derive(Debug)]
 struct RM(Vec<u8>);
-
 impl RM {
     const PREFIX: [(&'static str, u8); 4] = [
         ("add", 0b000000),
@@ -205,12 +204,11 @@ impl IRM {
     fn data_len(&self) -> usize {
         match (
             IRMOpCode::with_reg(self.0[0], self.reg()),
-            self.w(),
             self.s(),
+            self.w(),
         ) {
-            (IRMOpCode::Mov, 1, _) => 2,
-            (IRMOpCode::Add | IRMOpCode::Sub, 1, 0) => 2,
-            (IRMOpCode::Cmp, 1, 1) => 2,
+            (IRMOpCode::Mov, _, 1) => 2,
+            (IRMOpCode::Add | IRMOpCode::Sub | IRMOpCode::Cmp, 0, 1) => 2,
             (_, _, _) => 1,
         }
     }
@@ -231,25 +229,28 @@ impl IRM {
     fn decode(&self) -> sim8086::Inst {
         use sim8086::{Encoding, Inst, Mode, OperandEncoding};
 
-        let mode = Mode::from(self.mode());
-        let data_idx = match mode {
-            Mode::Reg | Mode::Mem0Disp => 2,
-            Mode::Mem1Disp => 3,
-            Mode::Mem2Disp => 4,
-        };
-
+        let data_idx = 2 + mode_to_write(self.rm(), self.mode());
         let src = Encoding::Operand(OperandEncoding::Immediate(if self.data_len() == 2 {
             ((self.0[data_idx + 1] as u16) << 8) | self.0[data_idx] as u16
         } else {
             self.0[data_idx] as u16
         }));
 
+        let mode = Mode::from(self.mode());
         let rm = mode_encode(&self.0, self.mode(), self.rm(), self.w());
         let dst = match (mode, self.s(), self.w()) {
             (Mode::Reg, _, _) => Encoding::Operand(rm),
             (_, 1, 1) => Encoding::Word(rm),
             (_, _, _) => Encoding::Byte(rm),
         };
+
+        // if matches!(IRMOpCode::with_reg(self.0[0], self.reg()), IRMOpCode::Cmp) {
+        //     println!("{:?}, {:?}; {:?}, {}", dst, src, mode, data_idx);
+        //     for b in self.0.iter() {
+        //         print!("{:b} ", b);
+        //     }
+        //     print!("\n");
+        // }
 
         let name = IRMOpCode::with_reg(self.0[0], self.reg())
             .name()
@@ -260,7 +261,6 @@ impl IRM {
 
 #[derive(Debug)]
 struct IR(Vec<u8>);
-
 impl IR {
     fn match_op(op: u8) -> bool {
         ((op >> 4) ^ 0b1011) == 0
