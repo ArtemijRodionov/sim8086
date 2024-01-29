@@ -14,4 +14,6 @@ test-unit:
 test-e2e: test-e2e-number sim8086.bin
 	@./e2e $(T)
 
+nasm-xxd:
+	@cat n.asm && echo "" && nasm n.asm -o n && xxd n
 

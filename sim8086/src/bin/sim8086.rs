@@ -1,4 +1,7 @@
-use std::env::args;
+use std::{
+    collections::HashSet,
+    env::args,
+};
 
 use sim8086;
 
@@ -40,6 +43,84 @@ fn mode_encode(data: &Vec<u8>, mode: u8, rm: u8, w: u8) -> sim8086::OperandEncod
             let disp = (data[3] as i16) << 8 | (data[2] as i16);
             OperandEncoding::effective_address(address, disp)
         }
+    }
+}
+
+#[derive(Debug)]
+struct JMP(Vec<u8>, String);
+impl JMP {
+    const PREFIX: [(&'static str, u8); 20] = [
+        ("jnz", 0b01110101),
+        ("je", 0b01110100),
+        ("jl", 0b01111100),
+        ("jle", 0b01111110),
+        ("jb", 0b01110010),
+        ("jbe", 0b01110110),
+        ("jp", 0b01111010),
+        ("jo", 0b01110000),
+        ("js", 0b01111000),
+        ("jnl", 0b01111101),
+        ("jg", 0b01111111),
+        ("jnb", 0b01110011),
+        ("ja", 0b01110111),
+        ("jnp", 0b01111011),
+        ("jno", 0b01110001),
+        ("jns", 0b01111001),
+        ("loop", 0b11100010),
+        ("loopz", 0b11100001),
+        ("loopnz", 0b11100000),
+        ("jcxz", 0b11100011),
+    ];
+
+    fn find_name(op: u8) -> Option<&'static str> {
+        for (name, prefix) in Self::PREFIX {
+            if (op ^ prefix) == 0 {
+                return Some(name);
+            }
+        }
+
+        None
+    }
+
+    fn match_op(op: u8) -> bool {
+        Self::find_name(op).is_some()
+    }
+
+    fn new(op: u8) -> Self {
+        let mut v = Vec::with_capacity(2);
+        v.push(op);
+        Self(v, "".to_string())
+    }
+
+    fn get_offset(&self) -> i8 {
+        self.0[1] as i8
+    }
+
+    fn set_label(&mut self, label: String) {
+        self.1 = label
+    }
+
+    fn len(&self) -> usize {
+        if self.0.len() == 1 {
+            return 1;
+        }
+
+        0
+    }
+
+    fn push(&mut self, data: u8) {
+        assert!(self.0.len() < 2);
+        self.0.push(data);
+    }
+
+    fn decode(&self) -> sim8086::Inst {
+        use sim8086::{Encoding, Inst, OperandEncoding};
+
+        let src = Encoding::Empty;
+        let dst = Encoding::Operand(OperandEncoding::Jmp(self.1.clone()));
+
+        let name = Self::find_name(self.0[0]).unwrap().to_string();
+        Inst::new(name, dst, src)
     }
 }
 
@@ -244,14 +325,6 @@ impl IRM {
             (_, _, _) => Encoding::Byte(rm),
         };
 
-        // if matches!(IRMOpCode::with_reg(self.0[0], self.reg()), IRMOpCode::Cmp) {
-        //     println!("{:?}, {:?}; {:?}, {}", dst, src, mode, data_idx);
-        //     for b in self.0.iter() {
-        //         print!("{:b} ", b);
-        //     }
-        //     print!("\n");
-        // }
-
         let name = IRMOpCode::with_reg(self.0[0], self.reg())
             .name()
             .to_string();
@@ -394,34 +467,24 @@ impl MA {
 }
 
 #[derive(Debug)]
-enum Mov {
+enum AsmOp {
     RM(RM),
     IRM(IRM),
     IR(IR),
     MA(MA),
+    JMP(JMP),
+    Label(String),
 }
 
-impl Mov {
-    fn get_mov(first: u8) -> Option<Self> {
-        if RM::match_op(first) {
-            Some(Self::RM(RM::new(first)))
-        } else if IR::match_op(first) {
-            Some(Self::IR(IR::new(first)))
-        } else if IRM::match_op(first) {
-            Some(Self::IRM(IRM::new(first)))
-        } else if MA::match_op(first) {
-            Some(Self::MA(MA::new(first)))
-        } else {
-            None
-        }
-    }
-
+impl AsmOp {
     fn len(&self) -> usize {
         match self {
             Self::RM(r) => r.len(),
             Self::IR(r) => r.len(),
             Self::MA(r) => r.len(),
             Self::IRM(r) => r.len(),
+            Self::JMP(r) => r.len(),
+            Self::Label(_) => 0,
         }
     }
 
@@ -431,6 +494,8 @@ impl Mov {
             Self::IR(r) => r.push(data),
             Self::MA(r) => r.push(data),
             Self::IRM(r) => r.push(data),
+            Self::JMP(r) => r.push(data),
+            Self::Label(_) => panic!("cant push"),
         }
     }
 
@@ -440,35 +505,97 @@ impl Mov {
             Self::IR(r) => r.decode(),
             Self::MA(r) => r.decode(),
             Self::IRM(r) => r.decode(),
+            Self::JMP(r) => r.decode(),
+            Self::Label(s) => sim8086::Inst::new_label(format!("{}:", s)),
         }
     }
 }
 
-fn parse(mut it: impl Iterator<Item = u8>) -> Vec<Result<Mov, sim8086::Error>> {
-    let mut ops = vec![];
+#[derive(Debug)]
+struct Asm {
+    ip: usize,
+    op: AsmOp,
+}
 
-    while let Some(first) = it.next() {
-        let Some(mut mov) = Mov::get_mov(first) else {
-            ops.push(Err(sim8086::Error(format!("{:b}", first))));
-            // println!("{:b}", first);
+impl Asm {
+    fn new(ip: usize, op: u8) -> Option<Self> {
+        Some(Asm {
+            ip,
+            op: if RM::match_op(op) {
+                AsmOp::RM(RM::new(op))
+            } else if IR::match_op(op) {
+                AsmOp::IR(IR::new(op))
+            } else if IRM::match_op(op) {
+                AsmOp::IRM(IRM::new(op))
+            } else if MA::match_op(op) {
+                AsmOp::MA(MA::new(op))
+            } else if JMP::match_op(op) {
+                AsmOp::JMP(JMP::new(op))
+            } else {
+                return None;
+            },
+        })
+    }
+
+    fn len(&self) -> usize {
+        self.op.len()
+    }
+
+    fn push(&mut self, data: u8) {
+        self.op.push(data)
+    }
+
+    fn decode(&self) -> sim8086::Inst {
+        self.op.decode()
+    }
+}
+
+fn parse(it: impl Iterator<Item = u8>) -> Vec<Result<Asm, String>> {
+    let mut ops = vec![];
+    let mut it = it.enumerate();
+    let mut existed_labels = HashSet::new();
+
+    while let Some((mut ip, first)) = it.next() {
+        let Some(mut asm) = Asm::new(ip, first) else {
+            ops.push(Err(format!("{:b}", first)));
             continue;
         };
 
         loop {
-            let w = mov.len();
+            let w = asm.len();
             if w == 0 {
                 break;
             }
             for _ in 0..w {
-                let Some(data) = it.next() else {
-                    // dbg!(mov);
+                let Some((i, data)) = it.next() else {
+                    dbg!(asm);
                     panic!()
                 };
-                mov.push(data);
+                ip = i;
+                asm.push(data);
             }
         }
-        ops.push(Ok(mov));
+
+        if let AsmOp::JMP(jump) = &mut asm.op {
+            let offset = jump.get_offset();
+            let label_ip = (ip as i64 + offset as i64) as usize;
+            let label_name = format!("label_{}", label_ip);
+            jump.set_label(label_name.clone());
+            if existed_labels.insert(label_name.clone()) {
+                ops.push(Ok(Asm {
+                    ip: label_ip,
+                    op: AsmOp::Label(label_name.clone()),
+                }))
+            }
+        };
+        ops.push(Ok(asm));
     }
+    ops.sort_by(|a, b| match (a, b) {
+        (Ok(a), Ok(b)) => a.ip.cmp(&b.ip),
+        (Err(_), Ok(_)) => std::cmp::Ordering::Greater,
+        (Ok(_), Err(_)) => std::cmp::Ordering::Less,
+        _ => std::cmp::Ordering::Equal,
+    });
 
     ops
 }
@@ -481,7 +608,7 @@ fn main() {
     for op in parse(data.into_iter()) {
         match op.and_then(|x| Ok(x.decode())) {
             Ok(op) => println!("{}", op.to_string()),
-            Err(e) => println!("{}", e.0),
+            Err(e) => println!("{}", e),
         };
     }
 }

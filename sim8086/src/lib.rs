@@ -1,8 +1,5 @@
 use std::fmt;
 
-#[derive(Debug)]
-pub struct Error(pub String);
-
 #[derive(Debug, Clone, Copy)]
 pub enum Mode {
     Mem0Disp,
@@ -107,10 +104,11 @@ impl EffectiveAddress {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum OperandEncoding {
     Accumulator8,
     Accumulator16,
+    Jmp(String),
     Memory(u16),
     Immediate(u16),
     Register(Register),
@@ -131,8 +129,9 @@ impl OperandEncoding {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum Encoding {
+    Empty,
     Operand(OperandEncoding),
     Byte(OperandEncoding),
     Word(OperandEncoding),
@@ -147,6 +146,9 @@ pub struct Inst {
 impl Inst {
     pub fn new(name: String, lhs: Encoding, rhs: Encoding) -> Self {
         Self { name, lhs, rhs }
+    }
+    pub fn new_label(name: String) -> Self {
+        Self { name, lhs: Encoding::Empty, rhs: Encoding::Empty }
     }
 }
 
@@ -207,6 +209,7 @@ impl fmt::Display for OperandEncoding {
             f,
             "{}",
             match self {
+                Self::Jmp(e) => e.to_string(),
                 Self::Accumulator8 => "al".to_string(),
                 Self::Accumulator16 => "ax".to_string(),
                 Self::Immediate(e) => e.to_string(),
@@ -227,6 +230,7 @@ impl fmt::Display for Encoding {
                 Self::Operand(o) => o.to_string(),
                 Self::Byte(o) => format!("byte {}", o),
                 Self::Word(o) => format!("word {}", o),
+                Self::Empty => "".to_string(),
             }
         )
     }
@@ -234,6 +238,12 @@ impl fmt::Display for Encoding {
 
 impl fmt::Display for Inst {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} {}, {}", self.name, self.lhs, self.rhs)
+        if matches!(self.lhs, Encoding::Empty) {
+            write!(f, "{}", self.name)
+        } else if matches!(self.rhs, Encoding::Empty) {
+            write!(f, "{} {}", self.name, self.lhs)
+        } else {
+            write!(f, "{} {}, {}", self.name, self.lhs, self.rhs)
+        }
     }
 }
