@@ -576,6 +576,7 @@ fn parse(it: impl Iterator<Item = u8>) -> Vec<Result<Asm, String>> {
             }
         }
 
+        // ugly label handling code
         if let AsmOp::JMP(jump) = &mut asm.op {
             let offset = jump.get_offset();
             let label_ip = (ip as i64 + offset as i64) as usize;
@@ -590,10 +591,9 @@ fn parse(it: impl Iterator<Item = u8>) -> Vec<Result<Asm, String>> {
         };
         ops.push(Ok(asm));
     }
+
     ops.sort_by(|a, b| match (a, b) {
         (Ok(a), Ok(b)) => a.ip.cmp(&b.ip),
-        (Err(_), Ok(_)) => std::cmp::Ordering::Greater,
-        (Ok(_), Err(_)) => std::cmp::Ordering::Less,
         _ => std::cmp::Ordering::Equal,
     });
 

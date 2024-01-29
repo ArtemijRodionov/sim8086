@@ -16,3 +16,7 @@ https://www.computerenhance.com/p/table-of-contents
 2. https://www.computerenhance.com/p/decoding-multiple-instructions-and 
     * HM at 30:00: listings 39 and 40
     * p. 164 in manual
+
+2. https://www.computerenhance.com/p/decoding-multiple-instructions-and 
+    * HM at 30:00: listings 41..
+    * p. 164 in manual
