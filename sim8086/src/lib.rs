@@ -110,7 +110,7 @@ pub enum OperandEncoding {
     Accumulator16,
     Jmp(String),
     Memory(u16),
-    Immediate(u16),
+    Immediate(i16),
     Register(Register),
     EffectiveAddress(EffectiveAddress),
 }

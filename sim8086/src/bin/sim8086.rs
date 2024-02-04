@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     env::args,
 };
 
@@ -312,9 +312,9 @@ impl IRM {
 
         let data_idx = 2 + mode_to_write(self.rm(), self.mode());
         let src = Encoding::Operand(OperandEncoding::Immediate(if self.data_len() == 2 {
-            ((self.0[data_idx + 1] as u16) << 8) | self.0[data_idx] as u16
+            ((self.0[data_idx + 1] as i16) << 8) | self.0[data_idx] as i16
         } else {
-            self.0[data_idx] as u16
+            (self.0[data_idx] as i8) as i16
         }));
 
         let mode = Mode::from(self.mode());
@@ -366,9 +366,9 @@ impl IR {
 
         let dst = OperandEncoding::register(self.reg(), self.w());
         let src = OperandEncoding::Immediate(if self.w() == 1 {
-            ((self.0[2] as u16) << 8) | self.0[1] as u16
+            ((self.0[2] as i16) << 8) | self.0[1] as i16
         } else {
-            self.0[1] as u16
+            (self.0[1] as i8) as i16
         });
 
         let name = "mov".to_string();
@@ -442,16 +442,16 @@ impl MA {
         let is_wide = self.w() == 1;
 
         let (mut dst, src_val) = if is_wide {
-            let mem = ((self.0[2] as u16) << 8) | self.0[1] as u16;
+            let mem = ((self.0[2] as i16) << 8) | self.0[1] as i16;
             (OperandEncoding::Accumulator16, mem)
         } else {
-            let mem = self.0[1] as u16;
+            let mem = (self.0[1] as i8) as i16;
             (OperandEncoding::Accumulator8, mem)
         };
 
         let op_code = MAOpCode::from(self.0[0]).unwrap();
         let src = if matches!(op_code, MAOpCode::Mov) {
-            let mut src = OperandEncoding::Memory(src_val);
+            let mut src = OperandEncoding::Memory(src_val as u16);
             if self.d() == 1 {
                 (dst, src) = (src, dst);
             };
@@ -473,7 +473,7 @@ enum AsmOp {
     IR(IR),
     MA(MA),
     JMP(JMP),
-    Label(String),
+    Label(usize),
 }
 
 impl AsmOp {
@@ -506,7 +506,7 @@ impl AsmOp {
             Self::MA(r) => r.decode(),
             Self::IRM(r) => r.decode(),
             Self::JMP(r) => r.decode(),
-            Self::Label(s) => sim8086::Inst::new_label(format!("{}:", s)),
+            Self::Label(s) => sim8086::Inst::new_label(format!("label_{}:", s)),
         }
     }
 }
@@ -553,7 +553,7 @@ impl Asm {
 fn parse(it: impl Iterator<Item = u8>) -> Vec<Result<Asm, String>> {
     let mut ops = vec![];
     let mut it = it.enumerate();
-    let mut existed_labels = HashSet::new();
+    let mut existed_labels = HashMap::new();
 
     while let Some((mut ip, first)) = it.next() {
         let Some(mut asm) = Asm::new(ip, first) else {
@@ -580,14 +580,18 @@ fn parse(it: impl Iterator<Item = u8>) -> Vec<Result<Asm, String>> {
         if let AsmOp::JMP(jump) = &mut asm.op {
             let offset = jump.get_offset();
             let label_ip = (ip as i64 + offset as i64) as usize;
-            let label_name = format!("label_{}", label_ip);
-            jump.set_label(label_name.clone());
-            if existed_labels.insert(label_name.clone()) {
+
+            let label_number = existed_labels.len() + 1;
+            existed_labels.entry(label_ip).or_insert_with(|| {
                 ops.push(Ok(Asm {
                     ip: label_ip,
-                    op: AsmOp::Label(label_name.clone()),
-                }))
-            }
+                    op: AsmOp::Label(label_number),
+                }));
+                label_number
+            });
+
+            let label_name = format!("label_{}", existed_labels[&label_ip]);
+            jump.set_label(label_name.clone());
         };
         ops.push(Ok(asm));
     }
@@ -600,15 +604,38 @@ fn parse(it: impl Iterator<Item = u8>) -> Vec<Result<Asm, String>> {
     ops
 }
 
+#[derive(Debug, Default)]
+struct Args {
+    flags: HashSet<String>,
+    path: String,
+}
+
 fn main() {
-    let path = args()
-        .nth(1)
+    let args = args()
+        .into_iter()
+        .skip(1)
+        .try_fold(Args::default(), |mut args, s| {
+            if s.starts_with("--") {
+                args.flags.insert(s.trim_start_matches("--").to_string());
+            } else if args.path == "" {
+                args.path = s.to_string();
+            } else {
+                return Err("You can't have multiple paths");
+            }
+
+            Ok(args)
+        })
         .expect("Provide unix path to 8086 binary file");
-    let data = std::fs::read(path).expect("Can't open given file");
-    for op in parse(data.into_iter()) {
-        match op.and_then(|x| Ok(x.decode())) {
-            Ok(op) => println!("{}", op.to_string()),
-            Err(e) => println!("{}", e),
-        };
+
+    let data = std::fs::read(args.path).expect("Can't open given file");
+    let asm = parse(data.into_iter());
+
+    if args.flags.is_empty() {
+        for op in asm {
+            match op.and_then(|x| Ok(x.decode())) {
+                Ok(op) => println!("{}", op),
+                Err(e) => println!("{}", e),
+            };
+        }
     }
 }
