@@ -2,26 +2,32 @@
 
 set -eou pipefail
 
-readArg() {
+readDecodeArg() {
 	local srcPath=data
 	if [[ $# -eq 0 ]]; then
 		ls $srcPath/*{37,38,39,40,41}*.asm
 		return
 	fi
 
-	if [[ $1 =~ '^[0-9]+$' ]]; then
-		ls $srcPath/*$1*.asm
-	else
-		echo $1
+	echo $1
+}
+
+readExecArg() {
+	local srcPath=data
+	if [[ $# -eq 0 ]]; then
+		ls $srcPath/*{43,}*.txt
+		return
 	fi
+
+	echo $1
 }
 
 readSrc() {
-	cat $1 | grep -vE ';|bits 16|^$'
+	cat $1 | grep -vE '^---|^;|bits 16|^$'
 }
 
 readObj() {
-	./sim8086.bin $1
+	./sim8086.bin $1 $READ_FLAGS
 }
 
 diffDelta() {
@@ -47,7 +53,7 @@ diffSourceWithParsed() {
 
 run() {
 	for srcPath in ${@}; do
-		if [[ $srcPath != *.asm ]]; then
+		if [[ $srcPath != *.asm && $srcPath != *.txt ]]; then
 			echo "$srcPath is not a source file"
 			exit 1
 		fi
@@ -56,5 +62,10 @@ run() {
 	done
 }
 
-args=$(readArg $@)
-run ${args:-""}
+READ_FLAGS=
+decode_args=$(readDecodeArg $@)
+run ${decode_args:-""}
+
+READ_FLAGS=--exec
+exec_args=$(readExecArg $@)
+run ${exec_args:-""}

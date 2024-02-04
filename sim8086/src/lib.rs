@@ -65,22 +65,22 @@ impl Register {
 
     fn to_idx(self) -> usize {
         match self {
-            Self::AL => 1,
-            Self::CL => 2,
-            Self::DL => 3,
-            Self::BL => 4,
-            Self::AH => 5,
-            Self::CH => 6,
-            Self::DH => 7,
-            Self::BH => 8,
-            Self::AX => 9,
-            Self::CX => 10,
-            Self::DX => 11,
-            Self::BX => 12,
-            Self::SP => 13,
-            Self::BP => 14,
-            Self::SI => 15,
-            Self::DI => 16,
+            Self::AL => 0,
+            Self::CL => 1,
+            Self::DL => 2,
+            Self::BL => 3,
+            Self::AH => 4,
+            Self::CH => 5,
+            Self::DH => 6,
+            Self::BH => 7,
+            Self::AX => 8,
+            Self::CX => 9,
+            Self::DX => 10,
+            Self::BX => 11,
+            Self::SP => 12,
+            Self::BP => 13,
+            Self::SI => 14,
+            Self::DI => 15,
         }
     }
 }
@@ -339,6 +339,7 @@ pub struct Machine {
     registers: [i16; 16],
     // flags: Flags,
     // stack: Vec<u8>,
+    // memory: Vec<u8>,
 }
 
 impl Machine {
@@ -349,6 +350,12 @@ impl Machine {
                 Encoding::Operand(OperandEncoding::Register(reg)),
                 Encoding::Operand(OperandEncoding::Immediate(val)),
             ) => {
+                println!(
+                    " ; {}:{:#x}->{:#x}",
+                    reg.to_string(),
+                    self.registers[reg.to_idx()],
+                    val
+                );
                 self.registers[reg.to_idx()] = val;
             }
             _ => {}

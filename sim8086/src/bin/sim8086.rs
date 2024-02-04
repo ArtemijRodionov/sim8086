@@ -622,18 +622,26 @@ fn main() {
         .expect("Provide unix path to 8086 binary file");
 
     let data = std::fs::read(&options.path).expect("Can't open given file");
-    let asm = parse(data.into_iter());
+    let insts = parse(data.into_iter());
 
     if options.flags.is_empty() {
-        for op in asm {
-            match op.and_then(|x| Ok(x.decode())) {
+        for inst in insts {
+            match inst.and_then(|x| Ok(x.decode())) {
                 Ok(op) => println!("{}", op.to_string()),
                 Err(e) => println!("{}", e),
             };
         }
     } else if options.flags.contains("exec") {
         let mut m = sim8086::Machine::default();
-        unimplemented!()
+        for inst in insts {
+            match inst.and_then(|x| Ok(x.decode())) {
+                Ok(inst) => {
+                    print!("{}", inst.to_string());
+                    sim8086::trace_exec(&mut m, inst);
+                }
+                Err(e) => println!("{}", e),
+            };
+        }
     } else {
         panic!("Unknown options {:?}", options);
     }
