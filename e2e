@@ -2,69 +2,58 @@
 
 set -eou pipefail
 
-readArg()
-{
+readArg() {
+	local srcPath=data
+	if [[ $# -eq 0 ]]; then
+		ls $srcPath/*{37,38,39,40,41}*.asm
+		return
+	fi
 
-  local srcPath=data
-  if [[ $# -eq 0 ]]
-  then
-    ls $srcPath/*.asm
-    return
-  fi
-
-  if [[ $1 =~ '^[0-9]+$' ]] 
-  then
-    ls $srcPath/*$1*.asm
-  else
-    echo $1
-  fi
+	if [[ $1 =~ '^[0-9]+$' ]]; then
+		ls $srcPath/*$1*.asm
+	else
+		echo $1
+	fi
 }
 
-readSrc()
-{
-  cat $1 | grep -vE ';|bits 16|^$'
+readSrc() {
+	cat $1 | grep -vE ';|bits 16|^$'
 }
 
-readObj()
-{
-  ./sim8086.bin $1
+readObj() {
+	./sim8086.bin $1
 }
 
-diffDelta()
-{
-  diff -u <(echo "$1") <(echo "$2") | delta --color-only
+diffDelta() {
+	diff -u <(echo "$1") <(echo "$2") | delta --color-only
 }
 
-diffSourceWithParsed()
-{
-  local srcAsm="$(readSrc $1)"
-  local objAsm="$(readObj $2)"
-  local red='\033[1;31m'
-  local green='\033[1;32m'
-  local nocolor='\033[0m'
+diffSourceWithParsed() {
+	local srcAsm="$(readSrc $1)"
+	local objAsm="$(readObj $2)"
+	local red='\033[1;31m'
+	local green='\033[1;32m'
+	local nocolor='\033[0m'
 
-  local output=$(diffDelta "$srcAsm" "$objAsm")
-  if [[ -z $output ]]
-  then
-    echo -e "${green}Success${nocolor} for $1"
-  else
-    echo -e "${red}Fail${nocolor} for $1" >&2
-    echo -e "$output"
-    exit 1
-  fi
+	local output=$(diffDelta "$srcAsm" "$objAsm")
+	if [[ -z $output ]]; then
+		echo -e "${green}Success${nocolor} for $1"
+	else
+		echo -e "${red}Fail${nocolor} for $1" >&2
+		echo -e "$output"
+		exit 1
+	fi
 }
 
-run ()
-{
-  for srcPath in ${@}
-  do
-    if [[ $srcPath != *.asm ]]; then
-      echo "$srcPath is not a source file"
-      exit 1
-    fi
-    local objPath="${srcPath%.*}"
-    diffSourceWithParsed $srcPath $objPath
-  done
+run() {
+	for srcPath in ${@}; do
+		if [[ $srcPath != *.asm ]]; then
+			echo "$srcPath is not a source file"
+			exit 1
+		fi
+		local objPath="${srcPath%.*}"
+		diffSourceWithParsed $srcPath $objPath
+	done
 }
 
 args=$(readArg $@)
