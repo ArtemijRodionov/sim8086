@@ -62,6 +62,27 @@ impl Register {
             _ => unreachable!(),
         }
     }
+
+    fn to_idx(self) -> usize {
+        match self {
+            Self::AL => 1,
+            Self::CL => 2,
+            Self::DL => 3,
+            Self::BL => 4,
+            Self::AH => 5,
+            Self::CH => 6,
+            Self::DH => 7,
+            Self::BH => 8,
+            Self::AX => 9,
+            Self::CX => 10,
+            Self::DX => 11,
+            Self::BX => 12,
+            Self::SP => 13,
+            Self::BP => 14,
+            Self::SI => 15,
+            Self::DI => 16,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -137,18 +158,44 @@ pub enum Encoding {
     Word(OperandEncoding),
 }
 
+#[derive(Debug, Clone)]
+pub enum InstType {
+    MOV,
+    ADD,
+    SUB,
+    CMP,
+    JNZ,
+    JE,
+    JL,
+    JLE,
+    JB,
+    JBE,
+    JP,
+    JO,
+    JS,
+    JNL,
+    JG,
+    JNB,
+    JA,
+    JNP,
+    JNO,
+    JNS,
+    LOOP,
+    LOOPZ,
+    LOOPNZ,
+    JCXZ,
+    Label(String),
+}
+
 pub struct Inst {
-    name: String,
+    t: InstType,
     lhs: Encoding,
     rhs: Encoding,
 }
 
 impl Inst {
-    pub fn new(name: String, lhs: Encoding, rhs: Encoding) -> Self {
-        Self { name, lhs, rhs }
-    }
-    pub fn new_label(name: String) -> Self {
-        Self { name, lhs: Encoding::Empty, rhs: Encoding::Empty }
+    pub fn new(name: InstType, lhs: Encoding, rhs: Encoding) -> Self {
+        Self { t: name, lhs, rhs }
     }
 }
 
@@ -236,14 +283,79 @@ impl fmt::Display for Encoding {
     }
 }
 
+impl fmt::Display for InstType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::MOV => "mov",
+                Self::ADD => "add",
+                Self::SUB => "sub",
+                Self::CMP => "cmp",
+                Self::JNZ => "jnz",
+                Self::JE => "je",
+                Self::JL => "jl",
+                Self::JLE => "jle",
+                Self::JB => "jb",
+                Self::JBE => "jbe",
+                Self::JP => "jp",
+                Self::JO => "jo",
+                Self::JS => "js",
+                Self::JNL => "jnl",
+                Self::JG => "jg",
+                Self::JNB => "jnb",
+                Self::JA => "ja",
+                Self::JNP => "jnp",
+                Self::JNO => "jno",
+                Self::JNS => "jns",
+                Self::LOOP => "loop",
+                Self::LOOPZ => "loopz",
+                Self::LOOPNZ => "loopnz",
+                Self::JCXZ => "jcxz",
+                Self::Label(s) => s,
+            }
+        )
+    }
+}
+
 impl fmt::Display for Inst {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if matches!(self.lhs, Encoding::Empty) {
-            write!(f, "{}", self.name)
+            write!(f, "{}", self.t)
         } else if matches!(self.rhs, Encoding::Empty) {
-            write!(f, "{} {}", self.name, self.lhs)
+            write!(f, "{} {}", self.t, self.lhs)
         } else {
-            write!(f, "{} {}, {}", self.name, self.lhs, self.rhs)
+            write!(f, "{} {}, {}", self.t, self.lhs, self.rhs)
         }
     }
+}
+
+#[derive(Debug, Default)]
+struct Flags {}
+
+#[derive(Debug, Default)]
+pub struct Machine {
+    registers: [i16; 16],
+    // flags: Flags,
+    // stack: Vec<u8>,
+}
+
+impl Machine {
+    fn exec(&mut self, inst: Inst) {
+        match (inst.t, inst.lhs, inst.rhs) {
+            (
+                InstType::MOV,
+                Encoding::Operand(OperandEncoding::Register(reg)),
+                Encoding::Operand(OperandEncoding::Immediate(val)),
+            ) => {
+                self.registers[reg.to_idx()] = val;
+            }
+            _ => {}
+        };
+    }
+}
+
+pub fn trace_exec(m: &mut Machine, inst: Inst) {
+    m.exec(inst);
 }

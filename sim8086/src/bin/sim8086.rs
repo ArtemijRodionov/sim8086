@@ -3,7 +3,7 @@ use std::{
     env::args,
 };
 
-use sim8086;
+use sim8086::{Encoding, Inst, InstType, OperandEncoding};
 
 fn mode_to_write(rm: u8, mode: u8) -> usize {
     use sim8086::{Address, Mode};
@@ -22,7 +22,7 @@ fn mode_to_write(rm: u8, mode: u8) -> usize {
 }
 
 fn mode_encode(data: &Vec<u8>, mode: u8, rm: u8, w: u8) -> sim8086::OperandEncoding {
-    use sim8086::{Address, Mode, OperandEncoding};
+    use sim8086::{Address, Mode};
     match Mode::from(mode) {
         Mode::Reg => OperandEncoding::register(rm, w),
         Mode::Mem0Disp => {
@@ -49,30 +49,30 @@ fn mode_encode(data: &Vec<u8>, mode: u8, rm: u8, w: u8) -> sim8086::OperandEncod
 #[derive(Debug)]
 struct JMP(Vec<u8>, String);
 impl JMP {
-    const PREFIX: [(&'static str, u8); 20] = [
-        ("jnz", 0b01110101),
-        ("je", 0b01110100),
-        ("jl", 0b01111100),
-        ("jle", 0b01111110),
-        ("jb", 0b01110010),
-        ("jbe", 0b01110110),
-        ("jp", 0b01111010),
-        ("jo", 0b01110000),
-        ("js", 0b01111000),
-        ("jnl", 0b01111101),
-        ("jg", 0b01111111),
-        ("jnb", 0b01110011),
-        ("ja", 0b01110111),
-        ("jnp", 0b01111011),
-        ("jno", 0b01110001),
-        ("jns", 0b01111001),
-        ("loop", 0b11100010),
-        ("loopz", 0b11100001),
-        ("loopnz", 0b11100000),
-        ("jcxz", 0b11100011),
+    const PREFIX: [(InstType, u8); 20] = [
+        (InstType::JNZ, 0b01110101),
+        (InstType::JE, 0b01110100),
+        (InstType::JL, 0b01111100),
+        (InstType::JLE, 0b01111110),
+        (InstType::JB, 0b01110010),
+        (InstType::JBE, 0b01110110),
+        (InstType::JP, 0b01111010),
+        (InstType::JO, 0b01110000),
+        (InstType::JS, 0b01111000),
+        (InstType::JNL, 0b01111101),
+        (InstType::JG, 0b01111111),
+        (InstType::JNB, 0b01110011),
+        (InstType::JA, 0b01110111),
+        (InstType::JNP, 0b01111011),
+        (InstType::JNO, 0b01110001),
+        (InstType::JNS, 0b01111001),
+        (InstType::LOOP, 0b11100010),
+        (InstType::LOOPZ, 0b11100001),
+        (InstType::LOOPNZ, 0b11100000),
+        (InstType::JCXZ, 0b11100011),
     ];
 
-    fn find_name(op: u8) -> Option<&'static str> {
+    fn inst_type(op: u8) -> Option<InstType> {
         for (name, prefix) in Self::PREFIX {
             if (op ^ prefix) == 0 {
                 return Some(name);
@@ -83,7 +83,7 @@ impl JMP {
     }
 
     fn match_op(op: u8) -> bool {
-        Self::find_name(op).is_some()
+        Self::inst_type(op).is_some()
     }
 
     fn new(op: u8) -> Self {
@@ -114,12 +114,10 @@ impl JMP {
     }
 
     fn decode(&self) -> sim8086::Inst {
-        use sim8086::{Encoding, Inst, OperandEncoding};
-
         let src = Encoding::Empty;
         let dst = Encoding::Operand(OperandEncoding::Jmp(self.1.clone()));
 
-        let name = Self::find_name(self.0[0]).unwrap().to_string();
+        let name = Self::inst_type(self.0[0]).unwrap();
         Inst::new(name, dst, src)
     }
 }
@@ -127,14 +125,14 @@ impl JMP {
 #[derive(Debug)]
 struct RM(Vec<u8>);
 impl RM {
-    const PREFIX: [(&'static str, u8); 4] = [
-        ("add", 0b000000),
-        ("sub", 0b001010),
-        ("mov", 0b100010),
-        ("cmp", 0b001110),
+    const PREFIX: [(InstType, u8); 4] = [
+        (InstType::ADD, 0b000000),
+        (InstType::SUB, 0b001010),
+        (InstType::MOV, 0b100010),
+        (InstType::CMP, 0b001110),
     ];
 
-    fn find_name(op: u8) -> Option<&'static str> {
+    fn inst_type(op: u8) -> Option<InstType> {
         let op_prefix = op >> 2;
         for (name, prefix) in Self::PREFIX {
             if (op_prefix ^ prefix) == 0 {
@@ -146,7 +144,7 @@ impl RM {
     }
 
     fn match_op(op: u8) -> bool {
-        Self::find_name(op).is_some()
+        Self::inst_type(op).is_some()
     }
 
     fn new(first: u8) -> Self {
@@ -188,8 +186,6 @@ impl RM {
     }
 
     fn decode(&self) -> sim8086::Inst {
-        use sim8086::{Encoding, Inst, OperandEncoding};
-
         let mut src = OperandEncoding::register(self.reg(), self.w());
         let mut dst = mode_encode(&self.0, self.mode(), self.rm(), self.w());
 
@@ -197,7 +193,7 @@ impl RM {
             (src, dst) = (dst, src);
         };
 
-        let name = Self::find_name(self.0[0]).unwrap().to_string();
+        let name = Self::inst_type(self.0[0]).unwrap();
         Inst::new(name, Encoding::Operand(dst), Encoding::Operand(src))
     }
 }
@@ -246,12 +242,12 @@ impl IRMOpCode {
         }
     }
 
-    fn name(self) -> &'static str {
+    fn inst_type(self) -> sim8086::InstType {
         match self {
-            Self::Mov => "mov",
-            Self::Add => "add",
-            Self::Sub => "sub",
-            Self::Cmp => "cmp",
+            Self::Mov => sim8086::InstType::MOV,
+            Self::Add => sim8086::InstType::ADD,
+            Self::Sub => sim8086::InstType::SUB,
+            Self::Cmp => sim8086::InstType::CMP,
             Self::TBD => unreachable!(),
         }
     }
@@ -261,7 +257,6 @@ impl IRM {
     fn match_op(op: u8) -> bool {
         IRMOpCode::match_op(op)
     }
-
     fn new(first: u8) -> Self {
         let mut v = Vec::with_capacity(6);
         v.push(first);
@@ -307,8 +302,8 @@ impl IRM {
         assert!(self.0.len() < 6);
         self.0.push(data);
     }
-    fn decode(&self) -> sim8086::Inst {
-        use sim8086::{Encoding, Inst, Mode, OperandEncoding};
+    fn decode(&self) -> Inst {
+        use sim8086::Mode;
 
         let data_idx = 2 + mode_to_write(self.rm(), self.mode());
         let src = Encoding::Operand(OperandEncoding::Immediate(if self.data_len() == 2 {
@@ -325,9 +320,7 @@ impl IRM {
             (_, _, _) => Encoding::Byte(rm),
         };
 
-        let name = IRMOpCode::with_reg(self.0[0], self.reg())
-            .name()
-            .to_string();
+        let name = IRMOpCode::with_reg(self.0[0], self.reg()).inst_type();
         Inst::new(name, dst, src)
     }
 }
@@ -361,9 +354,7 @@ impl IR {
     fn push(&mut self, data: u8) {
         self.0.push(data);
     }
-    fn decode(&self) -> sim8086::Inst {
-        use sim8086::{Encoding, Inst, OperandEncoding};
-
+    fn decode(&self) -> Inst {
         let dst = OperandEncoding::register(self.reg(), self.w());
         let src = OperandEncoding::Immediate(if self.w() == 1 {
             ((self.0[2] as i16) << 8) | self.0[1] as i16
@@ -371,8 +362,8 @@ impl IR {
             (self.0[1] as i8) as i16
         });
 
-        let name = "mov".to_string();
-        Inst::new(name, Encoding::Operand(dst), Encoding::Operand(src))
+        let inst_type = InstType::MOV;
+        Inst::new(inst_type, Encoding::Operand(dst), Encoding::Operand(src))
     }
 }
 
@@ -396,12 +387,12 @@ impl MAOpCode {
             None
         }
     }
-    fn name(self) -> &'static str {
+    fn inst_type(self) -> InstType {
         match self {
-            Self::Mov => "mov",
-            Self::Add => "add",
-            Self::Sub => "sub",
-            Self::Cmp => "cmp",
+            Self::Mov => InstType::MOV,
+            Self::Add => InstType::ADD,
+            Self::Sub => InstType::SUB,
+            Self::Cmp => InstType::CMP,
         }
     }
 }
@@ -437,8 +428,7 @@ impl MA {
         assert!(self.0.len() <= 3);
         self.0.push(data);
     }
-    fn decode(&self) -> sim8086::Inst {
-        use sim8086::{Encoding, Inst, OperandEncoding};
+    fn decode(&self) -> Inst {
         let is_wide = self.w() == 1;
 
         let (mut dst, src_val) = if is_wide {
@@ -461,8 +451,8 @@ impl MA {
             OperandEncoding::Immediate(src_val)
         };
 
-        let name = op_code.name().to_string();
-        Inst::new(name, Encoding::Operand(dst), Encoding::Operand(src))
+        let inst_type = op_code.inst_type();
+        Inst::new(inst_type, Encoding::Operand(dst), Encoding::Operand(src))
     }
 }
 
@@ -506,7 +496,11 @@ impl AsmOp {
             Self::MA(r) => r.decode(),
             Self::IRM(r) => r.decode(),
             Self::JMP(r) => r.decode(),
-            Self::Label(s) => sim8086::Inst::new_label(format!("label_{}:", s)),
+            Self::Label(s) => sim8086::Inst::new(
+                InstType::Label(format!("label_{}:", s)),
+                sim8086::Encoding::Empty,
+                Encoding::Empty,
+            ),
         }
     }
 }
@@ -605,16 +599,16 @@ fn parse(it: impl Iterator<Item = u8>) -> Vec<Result<Asm, String>> {
 }
 
 #[derive(Debug, Default)]
-struct Args {
+struct Options {
     flags: HashSet<String>,
     path: String,
 }
 
 fn main() {
-    let args = args()
+    let options = args()
         .into_iter()
         .skip(1)
-        .try_fold(Args::default(), |mut args, s| {
+        .try_fold(Options::default(), |mut args, s| {
             if s.starts_with("--") {
                 args.flags.insert(s.trim_start_matches("--").to_string());
             } else if args.path == "" {
@@ -627,15 +621,20 @@ fn main() {
         })
         .expect("Provide unix path to 8086 binary file");
 
-    let data = std::fs::read(args.path).expect("Can't open given file");
+    let data = std::fs::read(&options.path).expect("Can't open given file");
     let asm = parse(data.into_iter());
 
-    if args.flags.is_empty() {
+    if options.flags.is_empty() {
         for op in asm {
             match op.and_then(|x| Ok(x.decode())) {
-                Ok(op) => println!("{}", op),
+                Ok(op) => println!("{}", op.to_string()),
                 Err(e) => println!("{}", e),
             };
         }
+    } else if options.flags.contains("exec") {
+        let mut m = sim8086::Machine::default();
+        unimplemented!()
+    } else {
+        panic!("Unknown options {:?}", options);
     }
 }
