@@ -22,22 +22,22 @@ impl Mode {
 
 #[derive(Debug, Clone, Copy)]
 pub enum Register {
-    AL,
-    CL,
-    DL,
-    BL,
-    AH,
-    CH,
-    DH,
-    BH,
     AX,
+    BX,
     CX,
     DX,
-    BX,
     SP,
     BP,
     SI,
     DI,
+    AL,
+    BL,
+    CL,
+    DL,
+    AH,
+    BH,
+    CH,
+    DH,
 }
 
 impl Register {
@@ -65,22 +65,22 @@ impl Register {
 
     fn to_idx(self) -> usize {
         match self {
-            Self::AL => 0,
-            Self::CL => 1,
-            Self::DL => 2,
-            Self::BL => 3,
-            Self::AH => 4,
-            Self::CH => 5,
-            Self::DH => 6,
-            Self::BH => 7,
-            Self::AX => 8,
-            Self::CX => 9,
-            Self::DX => 10,
-            Self::BX => 11,
-            Self::SP => 12,
-            Self::BP => 13,
-            Self::SI => 14,
-            Self::DI => 15,
+            Self::AX => 0,
+            Self::BX => 1,
+            Self::CX => 2,
+            Self::DX => 3,
+            Self::SP => 4,
+            Self::BP => 5,
+            Self::SI => 6,
+            Self::DI => 7,
+            Self::AL => 8,
+            Self::BL => 9,
+            Self::CL => 10,
+            Self::DL => 11,
+            Self::AH => 12,
+            Self::BH => 13,
+            Self::CH => 14,
+            Self::DH => 15,
         }
     }
 }
@@ -342,7 +342,18 @@ pub struct Machine {
     // memory: Vec<u8>,
 }
 
+macro_rules! printer {
+    ($($arg:tt)*) => {{
+        print!($($arg)*);
+        ()
+    }};
+}
+
 impl Machine {
+    fn get_register_value(&self, reg: Register) -> i16 {
+        self.registers[reg.to_idx()]
+    }
+
     fn exec(&mut self, inst: Inst) {
         match (inst.t, inst.lhs, inst.rhs) {
             (
@@ -350,12 +361,13 @@ impl Machine {
                 Encoding::Operand(OperandEncoding::Register(reg)),
                 Encoding::Operand(OperandEncoding::Immediate(val)),
             ) => {
-                println!(
+                printer!(
                     " ; {}:{:#x}->{:#x}",
                     reg.to_string(),
                     self.registers[reg.to_idx()],
                     val
                 );
+
                 self.registers[reg.to_idx()] = val;
             }
             _ => {}
@@ -364,5 +376,16 @@ impl Machine {
 }
 
 pub fn trace_exec(m: &mut Machine, inst: Inst) {
+    print!("{}", inst.to_string());
     m.exec(inst);
+    println!();
+}
+
+pub fn trace_register(m: &Machine, reg: Register, num: usize) {
+    println!(
+        "{:>8}: {:#06x} ({})",
+        reg.to_string(),
+        m.get_register_value(reg),
+        num
+    );
 }

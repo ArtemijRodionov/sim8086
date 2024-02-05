@@ -3,7 +3,7 @@ use std::{
     env::args,
 };
 
-use sim8086::{Encoding, Inst, InstType, OperandEncoding};
+use sim8086::{Encoding, Inst, InstType, OperandEncoding, Register};
 
 fn mode_to_write(rm: u8, mode: u8) -> usize {
     use sim8086::{Address, Mode};
@@ -636,11 +636,26 @@ fn main() {
         for inst in insts {
             match inst.and_then(|x| Ok(x.decode())) {
                 Ok(inst) => {
-                    print!("{}", inst.to_string());
                     sim8086::trace_exec(&mut m, inst);
                 }
                 Err(e) => println!("{}", e),
             };
+        }
+        println!("Final registers:");
+        for (i, reg) in [
+            Register::AX,
+            Register::BX,
+            Register::CX,
+            Register::DX,
+            Register::SP,
+            Register::BP,
+            Register::SI,
+            Register::DI,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            sim8086::trace_register(&m, reg, i + 1);
         }
     } else {
         panic!("Unknown options {:?}", options);
