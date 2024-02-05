@@ -370,6 +370,20 @@ impl Machine {
 
                 self.registers[reg.to_idx()] = val;
             }
+            (
+                InstType::MOV,
+                Encoding::Operand(OperandEncoding::Register(reg1)),
+                Encoding::Operand(OperandEncoding::Register(reg2)),
+            ) => {
+                printer!(
+                    " ; {}:{:#x}->{:#x}",
+                    reg1.to_string(),
+                    self.registers[reg1.to_idx()],
+                    self.registers[reg2.to_idx()],
+                );
+
+                self.registers[reg1.to_idx()] = self.registers[reg2.to_idx()];
+            }
             _ => {}
         };
     }
@@ -381,11 +395,11 @@ pub fn trace_exec(m: &mut Machine, inst: Inst) {
     println!();
 }
 
-pub fn trace_register(m: &Machine, reg: Register, num: usize) {
+pub fn trace_register(m: &Machine, reg: Register) {
     println!(
         "{:>8}: {:#06x} ({})",
         reg.to_string(),
         m.get_register_value(reg),
-        num
+        m.get_register_value(reg),
     );
 }

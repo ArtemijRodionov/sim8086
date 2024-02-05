@@ -642,7 +642,7 @@ fn main() {
             };
         }
         println!("Final registers:");
-        for (i, reg) in [
+        for reg in [
             Register::AX,
             Register::BX,
             Register::CX,
@@ -651,11 +651,8 @@ fn main() {
             Register::BP,
             Register::SI,
             Register::DI,
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            sim8086::trace_register(&m, reg, i + 1);
+        ] {
+            sim8086::trace_register(&m, reg);
         }
     } else {
         panic!("Unknown options {:?}", options);

@@ -23,10 +23,14 @@ def color_diff(line):
     return line
 
 
+def lines(xs):
+    return [x.rstrip() for x in xs.splitlines()]
+
+
 def diff(a, b):
     return "\n".join(
         color_diff(line)
-        for line in difflib.unified_diff(a.splitlines(), b.splitlines())
+        for line in difflib.unified_diff(lines(a), lines(b))
     )
 
 
