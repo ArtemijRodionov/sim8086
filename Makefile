@@ -11,8 +11,8 @@ sim8086.bin: $(files)
 test-unit:
 	cd sim8086 && cargo test 
 
-test-e2e: test-e2e-number sim8086.bin
-	@./e2e $(T)
+test-e2e: sim8086.bin
+	@python3 e2e.py $(T)
 
 nasm-xxd:
 	@cat n.asm && echo "" && nasm n.asm -o n && xxd n
