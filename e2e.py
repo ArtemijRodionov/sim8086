@@ -1,24 +1,18 @@
+import sys
 import glob
 import difflib
 import subprocess
 
 default_decode_src = [37, 38, 39, 40, 41]
-default_exec_src = [43]
+default_exec_src = [43, 44]
 
 
-def read(path):
-    with open(path) as f:
-        return f.read()
+def green(msg):
+    return f"\033[1;32m{msg}\033[0m"
 
 
-def clean_src(xs):
-    return "\n".join([
-        x for x in xs.splitlines()
-        if x
-            and not x.startswith(';')
-            and not x.startswith("bits")
-            and not x.startswith("---")
-    ])
+def red(msg):
+    return f"\033[1;31m{msg}\033[0m"
 
 
 def color_diff(line):
@@ -36,22 +30,29 @@ def diff(a, b):
     )
 
 
+def read(path):
+    with open(path) as f:
+        return f.read().strip()
+
+
+def clean_src(xs):
+    return "\n".join([
+        x for x in xs.splitlines()
+        if x
+            and not x.startswith(';')
+            and not x.startswith("bits")
+            and not x.startswith("---")
+    ])
+
+
 def run_decode(obj_path, exec):
     args = ["./sim8086.bin", obj_path]
     if exec:
         args.append("--exec")
     result = subprocess.run(args, capture_output=True)
     if result.returncode != 0:
-        raise Exception(result.stderr.decode())
-    return result.stdout.decode()
-
-
-def green(msg):
-    return f"\033[1;32m{msg}\033[0m"
-
-
-def red(msg):
-    return f"\033[1;31m{msg}\033[0m"
+        raise Exception(result.stderr.decode().strip())
+    return result.stdout.decode().strip()
 
 
 def test(src, obj, exec):
@@ -89,19 +90,39 @@ def get_obj(glober):
             return g
 
 
+def test_decode(number):
+    glober = glob_it(number)
+    asm = get_asm(glober)
+    obj = get_obj(glober)
+    test(asm, obj, False)
+
+
+def test_exec(number):
+    glober = glob_it(number)
+    asm = get_txt(glober)
+    obj = get_obj(glober)
+    test(asm, obj, True)
+
+
 def main():
+    number_to_test = None
+    if len(sys.argv) == 2:
+        number_to_test = int(sys.argv[1])
+
+    if number_to_test:
+        if number_to_test in default_decode_src:
+            test_decode(number_to_test)
+        elif number_to_test in default_exec_src:
+            test_exec(number_to_test)
+        else:
+            raise ValueError("Don't know such a test", number_to_test)
+        return
+
     for s in default_decode_src:
-        glober = glob_it(s)
-        asm = get_asm(glober)
-        obj = get_obj(glober)
-        test(asm, obj, False)
+        test_decode(s)
 
     for s in default_exec_src:
-        glober = glob_it(s)
-        asm = get_txt(glober)
-        obj = get_obj(glober)
-        test(asm, obj, True)
-
+        test_exec(s)
 
 if __name__ == "__main__":
     main()
