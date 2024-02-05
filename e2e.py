@@ -5,6 +5,7 @@ import subprocess
 default_decode_src = [37, 38, 39, 40, 41]
 default_exec_src = [43]
 
+
 def read(path):
     with open(path) as f:
         return f.read()
@@ -16,11 +17,23 @@ def clean_src(xs):
         if x
             and not x.startswith(';')
             and not x.startswith("bits")
+            and not x.startswith("---")
     ])
 
 
+def color_diff(line):
+    if line.startswith("-"):
+        return red(line)
+    if line.startswith('+'):
+        return green(line)
+    return line
+
+
 def diff(a, b):
-    return "\n".join(difflib.unified_diff(a.splitlines(), b.splitlines()))
+    return "\n".join(
+        color_diff(line)
+        for line in difflib.unified_diff(a.splitlines(), b.splitlines())
+    )
 
 
 def run_decode(obj_path, exec):
@@ -33,15 +46,23 @@ def run_decode(obj_path, exec):
     return result.stdout.decode()
 
 
+def green(msg):
+    return f"\033[1;32m{msg}\033[0m"
+
+
+def red(msg):
+    return f"\033[1;31m{msg}\033[0m"
+
+
 def test(src, obj, exec):
     s = clean_src(read(src))
     o = run_decode(obj, exec)
     d = diff(s, o)
     if d:
-        print("Fail: {}\n\n{}", src, d)
+        print(f"{red('Fail')}: {src}\n\n{d}")
         exit(1)
     else:
-        print("Success: {}", src)
+        print(f"{green('Success')}: {src}")
 
 
 def glob_it(number):
