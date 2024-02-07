@@ -4,7 +4,7 @@ import difflib
 import subprocess
 
 default_decode_src = [37, 38, 39, 40, 41]
-default_exec_src = [43, 44]
+default_exec_src = [43, 44, 46]
 
 
 def green(msg):

@@ -1,5 +1,3 @@
-use std::fmt;
-
 #[derive(Debug, Clone, Copy)]
 pub enum Mode {
     Mem0Disp,
@@ -199,8 +197,8 @@ impl Inst {
     }
 }
 
-impl fmt::Display for EffectiveAddress {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl std::fmt::Display for EffectiveAddress {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
             "[{}{}]",
@@ -223,8 +221,8 @@ impl fmt::Display for EffectiveAddress {
     }
 }
 
-impl fmt::Display for Register {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl std::fmt::Display for Register {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
             "{}",
@@ -250,8 +248,8 @@ impl fmt::Display for Register {
     }
 }
 
-impl fmt::Display for OperandEncoding {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl std::fmt::Display for OperandEncoding {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
             "{}",
@@ -268,8 +266,8 @@ impl fmt::Display for OperandEncoding {
     }
 }
 
-impl fmt::Display for Encoding {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl std::fmt::Display for Encoding {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
             "{}",
@@ -283,8 +281,8 @@ impl fmt::Display for Encoding {
     }
 }
 
-impl fmt::Display for InstType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl std::fmt::Display for InstType {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
             "{}",
@@ -319,8 +317,8 @@ impl fmt::Display for InstType {
     }
 }
 
-impl fmt::Display for Inst {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl std::fmt::Display for Inst {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         if matches!(self.lhs, Encoding::Empty) {
             write!(f, "{}", self.t)
         } else if matches!(self.rhs, Encoding::Empty) {
@@ -331,13 +329,66 @@ impl fmt::Display for Inst {
     }
 }
 
-#[derive(Debug, Default)]
-struct Flags {}
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, PartialOrd, Ord)]
+struct Flags(u16);
+
+macro_rules! bit_field_is {
+    ($name:ident, $shift:literal) => {
+        fn $name(self) -> bool {
+            let shift: u8 = $shift;
+            ((self.0 >> shift) & 1) == 1
+        }
+    };
+}
+
+macro_rules! bit_field_unset {
+    ($name:ident, $shift:literal) => {
+        fn $name(self) -> Self {
+            let shift: u8 = $shift;
+            Self(self.0 & !(1u16 << shift))
+        }
+    };
+}
+
+macro_rules! bit_field_set {
+    ($name:ident, $shift:literal) => {
+        fn $name(self) -> Self {
+            let shift: u8 = $shift;
+            Self(self.0 | (1u16 << shift))
+        }
+    };
+}
+
+impl Flags {
+    bit_field_is!(is_p, 2);
+    bit_field_set!(set_p, 2);
+    bit_field_unset!(unset_p, 2);
+
+    bit_field_is!(is_z, 6);
+    bit_field_set!(set_z, 6);
+    bit_field_unset!(unset_z, 6);
+
+    bit_field_is!(is_s, 7);
+    bit_field_set!(set_s, 7);
+    bit_field_unset!(unset_s, 7);
+}
+
+impl std::fmt::Display for Flags {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}{}{}",
+            if self.is_p() { "P" } else { "" },
+            if self.is_z() { "Z" } else { "" },
+            if self.is_s() { "S" } else { "" },
+        )
+    }
+}
 
 #[derive(Debug, Default)]
 pub struct Machine {
     registers: [i16; 16],
-    // flags: Flags,
+    flags: Flags,
     // stack: Vec<u8>,
     // memory: Vec<u8>,
 }
@@ -367,7 +418,6 @@ impl Machine {
                     self.registers[reg.to_idx()],
                     val
                 );
-
                 self.registers[reg.to_idx()] = val;
             }
             (
@@ -381,11 +431,88 @@ impl Machine {
                     self.registers[reg1.to_idx()],
                     self.registers[reg2.to_idx()],
                 );
-
                 self.registers[reg1.to_idx()] = self.registers[reg2.to_idx()];
+            }
+            (
+                InstType::ADD,
+                Encoding::Operand(OperandEncoding::Register(reg1)),
+                Encoding::Operand(OperandEncoding::Immediate(val)),
+            ) => {
+                printer!(
+                    " ; {}:{:#x}->{:#x}",
+                    reg1.to_string(),
+                    self.registers[reg1.to_idx()],
+                    self.registers[reg1.to_idx()] + val,
+                );
+                self.registers[reg1.to_idx()] += val;
+            }
+            (
+                InstType::SUB,
+                Encoding::Operand(OperandEncoding::Register(reg1)),
+                Encoding::Operand(OperandEncoding::Register(reg2)),
+            ) => {
+                printer!(
+                    " ; {}:{:#x}->{:#x}",
+                    reg1.to_string(),
+                    self.registers[reg1.to_idx()],
+                    self.registers[reg1.to_idx()] - self.registers[reg2.to_idx()],
+                );
+                self.registers[reg1.to_idx()] -= self.registers[reg2.to_idx()];
+                self.update_flags(reg1);
+            }
+            (
+                InstType::SUB,
+                Encoding::Operand(OperandEncoding::Register(reg1)),
+                Encoding::Operand(OperandEncoding::Immediate(val)),
+            ) => {
+                printer!(
+                    " ; {}:{:#x}->{:#x}",
+                    reg1.to_string(),
+                    self.registers[reg1.to_idx()],
+                    self.registers[reg1.to_idx()] - val,
+                );
+                self.registers[reg1.to_idx()] -= val;
+                self.update_flags(reg1);
+            }
+            (
+                InstType::CMP,
+                Encoding::Operand(OperandEncoding::Register(reg1)),
+                Encoding::Operand(OperandEncoding::Register(reg2)),
+            ) => {
+                let from_f = self.flags;
+                if self.registers[reg1.to_idx()] - self.registers[reg2.to_idx()] < 0 {
+                    self.flags = self.flags.set_s()
+                } else {
+                    self.flags = self.flags.unset_s()
+                }
+                let to_f = self.flags;
+                printer!(" ; flags:{}->{}", from_f, to_f);
             }
             _ => {}
         };
+    }
+
+    fn update_flags(&mut self, reg1: Register) {
+        let from_f = self.flags;
+        if self.registers[reg1.to_idx()] < 0 {
+            self.flags = self.flags.set_s();
+        } else {
+            self.flags = self.flags.unset_s();
+        }
+        if self.registers[reg1.to_idx()] == 0 {
+            self.flags = self.flags.set_z();
+        } else {
+            self.flags = self.flags.unset_z();
+        }
+        if (self.registers[reg1.to_idx()] & 0xFF).count_ones() % 2 == 0 {
+            self.flags = self.flags.set_p();
+        } else {
+            self.flags = self.flags.unset_p();
+        }
+        let to_f = self.flags;
+        if from_f != to_f {
+            printer!(" flags:{}->{}", from_f, to_f);
+        }
     }
 }
 
