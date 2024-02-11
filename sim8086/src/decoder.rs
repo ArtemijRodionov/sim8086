@@ -19,7 +19,7 @@ impl Mode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Ord, Eq, Hash)]
-pub(crate) enum Register {
+pub enum Register {
     AX,
     BX,
     CX,

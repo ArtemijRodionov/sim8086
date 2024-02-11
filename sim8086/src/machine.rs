@@ -31,6 +31,7 @@ macro_rules! bit_field_set {
         }
     };
 }
+
 impl Flags {
     bit_field_is!(is_p, 2);
     bit_field_set!(set_p, 2);
@@ -74,9 +75,6 @@ pub struct Machine {
 impl Machine {
     fn get_register_value(&self, reg: Register) -> i16 {
         self.registers[reg.to_idx()]
-    }
-    fn get_flag(&self) -> Flags {
-        return self.flags;
     }
 
     fn exec(&mut self, inst: Inst) -> Step {
