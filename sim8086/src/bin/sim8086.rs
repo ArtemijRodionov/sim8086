@@ -631,10 +631,11 @@ fn main() {
         let mut m = sim8086::machine::Machine::default();
         let mut tracer = sim8086::machine::Tracer::default();
 
+        let with_ip = options.flags.contains("ip");
         for inst in insts {
             match inst.and_then(|x| Ok(x.decode())) {
                 Ok(inst) => {
-                    tracer.trace_exec(&mut m, inst);
+                    tracer.trace_exec(&mut m, inst, with_ip);
                 }
                 Err(e) => println!("{}", e),
             };

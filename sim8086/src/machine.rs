@@ -60,6 +60,7 @@ impl std::fmt::Display for Flags {
 
 #[derive(Debug)]
 struct Step {
+    ip: (u16, u16),
     register: Option<(Register, i16, i16)>,
     flags: Option<(Flags, Flags)>,
 }
@@ -68,6 +69,7 @@ struct Step {
 pub struct Machine {
     registers: [i16; 16],
     flags: Flags,
+    ip: u16,
     // stack: Vec<u8>,
     // memory: Vec<u8>,
 }
@@ -78,6 +80,7 @@ impl Machine {
     }
 
     fn exec(&mut self, inst: Inst) -> Step {
+        let from_ip = self.ip;
         let mut register_update = None;
         let mut flag_update = None;
 
@@ -160,7 +163,10 @@ impl Machine {
             _ => {}
         };
 
+        self.ip += 1;
+
         Step {
+            ip: (from_ip, self.ip),
             flags: flag_update,
             register: register_update,
         }
@@ -191,20 +197,25 @@ pub struct Tracer {
 }
 
 impl Tracer {
-    pub fn trace_exec(&mut self, m: &mut Machine, inst: Inst) {
+    pub fn trace_exec(&mut self, m: &mut Machine, inst: Inst, with_ip: bool) {
         let mut trace = inst.to_string();
+        let mut write_trace = |msg| write!(trace, "{}", msg).unwrap();
         let fmt_flags = |from, to| format!(" flags:{}->{}", from, to);
         let fmt_reg = |reg, from, to| format!(" {}:{:#x}->{:#x}", reg, from, to);
+        let fmt_ip = |from, to| format!(" ip:{:#x}->{:#x}", from, to);
 
         let step = m.exec(inst);
         if step.register.is_some() || step.flags.is_some() {
-            write!(trace, " ;").expect("can't write");
+            write_trace(" ;".to_string());
             if let Some((reg, from, to)) = step.register {
                 self.registers.insert(reg);
-                write!(trace, "{}", fmt_reg(reg, from, to)).expect("can't write");
+                write_trace(fmt_reg(reg, from, to));
+            }
+            if with_ip {
+                write_trace(fmt_ip(step.ip.0, step.ip.1));
             }
             if let Some((from, to)) = step.flags {
-                write!(trace, "{}", fmt_flags(from, to)).expect("can't write");
+                write_trace(fmt_flags(from, to));
             }
         }
 

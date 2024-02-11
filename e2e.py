@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import sys
 import glob
 import difflib
@@ -5,6 +6,7 @@ import subprocess
 
 default_decode_src = [37, 38, 39, 40, 41]
 default_exec_src = [43, 44, 46]
+default_exec_ip_src = [48]
 
 
 def green(msg):
@@ -49,19 +51,27 @@ def clean_src(xs):
     ])
 
 
-def run_decode(obj_path, exec):
+@dataclass
+class TestOptions:
+    exec: bool = False
+    ip: bool = False
+
+
+def run_decode(obj_path, options: TestOptions):
     args = ["./sim8086.bin", obj_path]
-    if exec:
+    if options.exec:
         args.append("--exec")
+    if options.ip:
+        args.append("--ip")
     result = subprocess.run(args, capture_output=True)
     if result.returncode != 0:
         raise Exception(result.stderr.decode().strip())
     return result.stdout.decode().strip()
 
 
-def test(src, obj, exec):
+def test(src, obj, options=TestOptions()):
     s = clean_src(read(src))
-    o = run_decode(obj, exec)
+    o = run_decode(obj, options)
     d = diff(s, o)
     if d:
         print(f"{red('Fail')}: {src}\n\n{d}")
@@ -98,17 +108,19 @@ def test_decode(number):
     glober = glob_it(number)
     asm = get_asm(glober)
     obj = get_obj(glober)
-    test(asm, obj, False)
+    test(asm, obj)
 
 
-def test_exec(number):
+def test_machine(number, options):
     glober = glob_it(number)
     asm = get_txt(glober)
     obj = get_obj(glober)
-    test(asm, obj, True)
+    test(asm, obj, options)
 
 
 def main():
+    exec_opt = TestOptions(exec=True)
+    exec_ip_opt = TestOptions(exec=True, ip=True)
     number_to_test = None
     if len(sys.argv) == 2:
         number_to_test = int(sys.argv[1])
@@ -117,7 +129,9 @@ def main():
         if number_to_test in default_decode_src:
             test_decode(number_to_test)
         elif number_to_test in default_exec_src:
-            test_exec(number_to_test)
+            test_machine(number_to_test, exec_opt)
+        elif number_to_test in default_exec_ip_src:
+            test_machine(number_to_test, exec_ip_opt)
         else:
             raise ValueError("Don't know such a test", number_to_test)
         return
@@ -126,7 +140,10 @@ def main():
         test_decode(s)
 
     for s in default_exec_src:
-        test_exec(s)
+        test_machine(s, exec_opt)
+
+    for s in default_exec_ip_src:
+        test_machine(s, exec_ip_opt)
 
 if __name__ == "__main__":
     main()

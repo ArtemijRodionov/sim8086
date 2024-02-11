@@ -20,3 +20,12 @@ https://www.computerenhance.com/p/table-of-contents
 2. https://www.computerenhance.com/p/decoding-multiple-instructions-and 
     * HM at 30:00: listings 41..
     * p. 164 in manual
+
+6. https://www.computerenhance.com/p/simulating-non-memory-movs
+    * listing 43, 44
+
+7. https://www.computerenhance.com/p/simulating-add-jmp-and-cmp
+    * listing 46
+
+8. https://www.computerenhance.com/p/simulating-conditional-jumps
+    * listing 48, 49
