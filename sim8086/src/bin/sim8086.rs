@@ -3,10 +3,9 @@ use std::{
     env::args,
 };
 
-use sim8086::{Encoding, Inst, InstType, OperandEncoding, Register};
+use sim8086::decoder::{Address, Encoding, Inst, InstType, Mode, OperandEncoding};
 
 fn mode_to_write(rm: u8, mode: u8) -> usize {
-    use sim8086::{Address, Mode};
     match Mode::from(mode) {
         Mode::Mem0Disp => {
             if let Address::DirectBP = Address::from(rm) {
@@ -21,8 +20,7 @@ fn mode_to_write(rm: u8, mode: u8) -> usize {
     }
 }
 
-fn mode_encode(data: &Vec<u8>, mode: u8, rm: u8, w: u8) -> sim8086::OperandEncoding {
-    use sim8086::{Address, Mode};
+fn mode_encode(data: &Vec<u8>, mode: u8, rm: u8, w: u8) -> OperandEncoding {
     match Mode::from(mode) {
         Mode::Reg => OperandEncoding::register(rm, w),
         Mode::Mem0Disp => {
@@ -113,7 +111,7 @@ impl JMP {
         self.0.push(data);
     }
 
-    fn decode(&self) -> sim8086::Inst {
+    fn decode(&self) -> Inst {
         let src = Encoding::Empty;
         let dst = Encoding::Operand(OperandEncoding::Jmp(self.1.clone()));
 
@@ -185,7 +183,7 @@ impl RM {
         self.0.push(data);
     }
 
-    fn decode(&self) -> sim8086::Inst {
+    fn decode(&self) -> Inst {
         let mut src = OperandEncoding::register(self.reg(), self.w());
         let mut dst = mode_encode(&self.0, self.mode(), self.rm(), self.w());
 
@@ -242,12 +240,12 @@ impl IRMOpCode {
         }
     }
 
-    fn inst_type(self) -> sim8086::InstType {
+    fn inst_type(self) -> InstType {
         match self {
-            Self::Mov => sim8086::InstType::MOV,
-            Self::Add => sim8086::InstType::ADD,
-            Self::Sub => sim8086::InstType::SUB,
-            Self::Cmp => sim8086::InstType::CMP,
+            Self::Mov => InstType::MOV,
+            Self::Add => InstType::ADD,
+            Self::Sub => InstType::SUB,
+            Self::Cmp => InstType::CMP,
             Self::TBD => unreachable!(),
         }
     }
@@ -303,8 +301,6 @@ impl IRM {
         self.0.push(data);
     }
     fn decode(&self) -> Inst {
-        use sim8086::Mode;
-
         let data_idx = 2 + mode_to_write(self.rm(), self.mode());
         let src = Encoding::Operand(OperandEncoding::Immediate(if self.data_len() == 2 {
             ((self.0[data_idx + 1] as i16) << 8) | self.0[data_idx] as i16
@@ -489,16 +485,16 @@ impl AsmOp {
         }
     }
 
-    fn decode(&self) -> sim8086::Inst {
+    fn decode(&self) -> Inst {
         match self {
             Self::RM(r) => r.decode(),
             Self::IR(r) => r.decode(),
             Self::MA(r) => r.decode(),
             Self::IRM(r) => r.decode(),
             Self::JMP(r) => r.decode(),
-            Self::Label(s) => sim8086::Inst::new(
+            Self::Label(s) => Inst::new(
                 InstType::Label(format!("label_{}:", s)),
-                sim8086::Encoding::Empty,
+                Encoding::Empty,
                 Encoding::Empty,
             ),
         }
@@ -539,7 +535,7 @@ impl Asm {
         self.op.push(data)
     }
 
-    fn decode(&self) -> sim8086::Inst {
+    fn decode(&self) -> Inst {
         self.op.decode()
     }
 }
@@ -632,28 +628,18 @@ fn main() {
             };
         }
     } else if options.flags.contains("exec") {
-        let mut m = sim8086::Machine::default();
+        let mut m = sim8086::machine::Machine::default();
+        let mut tracer = sim8086::machine::Tracer::default();
+
         for inst in insts {
             match inst.and_then(|x| Ok(x.decode())) {
                 Ok(inst) => {
-                    sim8086::trace_exec(&mut m, inst);
+                    tracer.trace_exec(&mut m, inst);
                 }
                 Err(e) => println!("{}", e),
             };
         }
-        println!("Final registers:");
-        for reg in [
-            Register::AX,
-            Register::BX,
-            Register::CX,
-            Register::DX,
-            Register::SP,
-            Register::BP,
-            Register::SI,
-            Register::DI,
-        ] {
-            sim8086::trace_register(&m, reg);
-        }
+        tracer.trace_state(&m);
     } else {
         panic!("Unknown options {:?}", options);
     }
