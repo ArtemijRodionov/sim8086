@@ -33,27 +33,38 @@ macro_rules! bit_field_set {
 }
 
 impl Flags {
-    bit_field_is!(is_p, 2);
-    bit_field_set!(set_p, 2);
-    bit_field_unset!(unset_p, 2);
+    // https://en.wikipedia.org/wiki/FLAGS_register
+    bit_field_is!(is_cf, 0);
+    bit_field_set!(set_cf, 0);
+    bit_field_unset!(unset_cf, 0);
 
-    bit_field_is!(is_z, 6);
-    bit_field_set!(set_z, 6);
-    bit_field_unset!(unset_z, 6);
+    bit_field_is!(is_pf, 2);
+    bit_field_set!(set_pf, 2);
+    bit_field_unset!(unset_pf, 2);
 
-    bit_field_is!(is_s, 7);
-    bit_field_set!(set_s, 7);
-    bit_field_unset!(unset_s, 7);
+    bit_field_is!(is_af, 4);
+    bit_field_set!(set_af, 4);
+    bit_field_unset!(unset_af, 4);
+
+    bit_field_is!(is_zf, 6);
+    bit_field_set!(set_zf, 6);
+    bit_field_unset!(unset_zf, 6);
+
+    bit_field_is!(is_sf, 7);
+    bit_field_set!(set_sf, 7);
+    bit_field_unset!(unset_sf, 7);
 }
 
 impl std::fmt::Display for Flags {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{}{}{}",
-            if self.is_p() { "P" } else { "" },
-            if self.is_z() { "Z" } else { "" },
-            if self.is_s() { "S" } else { "" },
+            "{}{}{}{}{}",
+            if self.is_cf() { "C" } else { "" },
+            if self.is_pf() { "P" } else { "" },
+            if self.is_af() { "A" } else { "" },
+            if self.is_zf() { "Z" } else { "" },
+            if self.is_sf() { "S" } else { "" },
         )
     }
 }
@@ -67,6 +78,7 @@ struct Step {
 
 #[derive(Debug, Default)]
 pub struct Machine {
+    // I didn't bother with cascade behavior of registers
     registers: [i16; 16],
     flags: Flags,
     ip: u16,
@@ -81,8 +93,9 @@ impl Machine {
 
     fn exec(&mut self, inst: Inst) -> Step {
         let from_ip = self.ip;
+        let from_flags = self.flags;
+
         let mut register_update = None;
-        let mut flag_update = None;
 
         match (inst.t, inst.lhs, inst.rhs) {
             (
@@ -92,7 +105,9 @@ impl Machine {
             ) => {
                 let from_reg = self.registers[reg1.to_idx()];
                 self.registers[reg1.to_idx()] = val;
-                register_update = Some((reg1, from_reg, self.registers[reg1.to_idx()]));
+                let to_reg = self.registers[reg1.to_idx()];
+
+                register_update = Some((reg1, from_reg, to_reg));
             }
             (
                 InstType::MOV,
@@ -101,7 +116,9 @@ impl Machine {
             ) => {
                 let from_reg = self.registers[reg1.to_idx()];
                 self.registers[reg1.to_idx()] = self.registers[reg2.to_idx()];
-                register_update = Some((reg1, from_reg, self.registers[reg1.to_idx()]));
+                let to_reg = self.registers[reg1.to_idx()];
+
+                register_update = Some((reg1, from_reg, to_reg));
             }
             (
                 InstType::ADD,
@@ -110,60 +127,58 @@ impl Machine {
             ) => {
                 let from_reg = self.registers[reg1.to_idx()];
                 self.registers[reg1.to_idx()] += val;
-                register_update = Some((reg1, from_reg, self.registers[reg1.to_idx()]));
+                let to_reg = self.registers[reg1.to_idx()];
+
+                register_update = Some((reg1, from_reg, to_reg));
+                self.update_flags(from_reg, to_reg);
+                self.update_add_flags(from_reg, val);
             }
             (
                 InstType::SUB,
                 Encoding::Operand(OperandEncoding::Register(reg1)),
                 Encoding::Operand(OperandEncoding::Register(reg2)),
             ) => {
-                let from_flags = self.flags;
                 let from_reg = self.registers[reg1.to_idx()];
-
                 self.registers[reg1.to_idx()] -= self.registers[reg2.to_idx()];
-                self.update_flags(reg1);
+                let to_reg = self.registers[reg1.to_idx()];
 
-                register_update = Some((reg1, from_reg, self.registers[reg1.to_idx()]));
-                if self.flags != from_flags {
-                    flag_update = Some((from_flags, self.flags));
-                }
+                register_update = Some((reg1, from_reg, to_reg));
+
+                self.update_flags(from_reg, to_reg);
+                self.update_sub_flags(from_reg, self.registers[reg2.to_idx()]);
             }
             (
                 InstType::SUB,
                 Encoding::Operand(OperandEncoding::Register(reg1)),
                 Encoding::Operand(OperandEncoding::Immediate(val)),
             ) => {
-                let from_flags = self.flags;
                 let from_reg = self.registers[reg1.to_idx()];
-
                 self.registers[reg1.to_idx()] -= val;
-                self.update_flags(reg1);
+                let to_reg = self.registers[reg1.to_idx()];
 
-                register_update = Some((reg1, from_reg, self.registers[reg1.to_idx()]));
-                if self.flags != from_flags {
-                    flag_update = Some((from_flags, self.flags));
-                }
+                register_update = Some((reg1, from_reg, to_reg));
+
+                self.update_flags(from_reg, to_reg);
+                self.update_sub_flags(from_reg, val);
             }
             (
                 InstType::CMP,
                 Encoding::Operand(OperandEncoding::Register(reg1)),
                 Encoding::Operand(OperandEncoding::Register(reg2)),
             ) => {
-                let from_flags = self.flags;
-                if self.registers[reg1.to_idx()] - self.registers[reg2.to_idx()] < 0 {
-                    self.flags = self.flags.set_s()
-                } else {
-                    self.flags = self.flags.unset_s()
-                }
-
-                if self.flags != from_flags {
-                    flag_update = Some((from_flags, self.flags));
-                }
+                let from_reg = self.registers[reg1.to_idx()];
+                let to_reg = self.registers[reg1.to_idx()] - self.registers[reg2.to_idx()];
+                self.update_flags(from_reg, to_reg);
             }
             _ => {}
         };
 
-        self.ip += 1;
+        self.ip += inst.length as u16;
+
+        let mut flag_update = None;
+        if self.flags != from_flags {
+            flag_update = Some((from_flags, self.flags));
+        }
 
         Step {
             ip: (from_ip, self.ip),
@@ -172,32 +187,64 @@ impl Machine {
         }
     }
 
-    fn update_flags(&mut self, reg1: Register) {
-        if self.registers[reg1.to_idx()] < 0 {
-            self.flags = self.flags.set_s();
+    fn update_flags(&mut self, from_val: i16, to_val: i16) {
+        if to_val < 0 {
+            self.flags = self.flags.set_sf();
         } else {
-            self.flags = self.flags.unset_s();
+            self.flags = self.flags.unset_sf();
         }
-        if self.registers[reg1.to_idx()] == 0 {
-            self.flags = self.flags.set_z();
+        if to_val == 0 {
+            self.flags = self.flags.set_zf();
         } else {
-            self.flags = self.flags.unset_z();
+            self.flags = self.flags.unset_zf();
         }
-        if (self.registers[reg1.to_idx()] & 0xFF).count_ones() % 2 == 0 {
-            self.flags = self.flags.set_p();
+        if (to_val & 0xFF).count_ones() % 2 == 0 {
+            self.flags = self.flags.set_pf();
         } else {
-            self.flags = self.flags.unset_p();
+            self.flags = self.flags.unset_pf();
+        }
+        if (to_val > 0 && from_val < 0) || (to_val < 0 && from_val > 0) {
+            self.flags = self.flags.set_cf();
+        } else {
+            self.flags = self.flags.unset_cf();
+        }
+    }
+    fn update_add_flags(&mut self, from_val: i16, val: i16) {
+        if (from_val & 0xF) + (val & 0xF) > 0xF {
+            self.flags = self.flags.set_af();
+        } else {
+            self.flags = self.flags.unset_af();
+        }
+    }
+    fn update_sub_flags(&mut self, from_val: i16, val: i16) {
+        if (from_val & 0xF) - (val & 0xF) < 0 {
+            self.flags = self.flags.set_af();
+        } else {
+            self.flags = self.flags.unset_af();
         }
     }
 }
 
 #[derive(Default)]
+pub struct TracerOptions {
+    pub with_ip: bool,
+}
+
+#[derive(Default)]
 pub struct Tracer {
+    opt: TracerOptions,
     registers: HashSet<Register>,
 }
 
 impl Tracer {
-    pub fn trace_exec(&mut self, m: &mut Machine, inst: Inst, with_ip: bool) {
+    pub fn with_options(opt: TracerOptions) -> Self {
+        Self {
+            opt,
+            ..Tracer::default()
+        }
+    }
+
+    pub fn trace_exec(&mut self, m: &mut Machine, inst: Inst) {
         let mut trace = inst.to_string();
         let mut write_trace = |msg| write!(trace, "{}", msg).unwrap();
         let fmt_flags = |from, to| format!(" flags:{}->{}", from, to);
@@ -211,7 +258,7 @@ impl Tracer {
                 self.registers.insert(reg);
                 write_trace(fmt_reg(reg, from, to));
             }
-            if with_ip {
+            if self.opt.with_ip {
                 write_trace(fmt_ip(step.ip.0, step.ip.1));
             }
             if let Some((from, to)) = step.flags {
@@ -232,11 +279,16 @@ impl Tracer {
                 trace,
                 "{:>8}: {:#06x} ({})\n",
                 reg.to_string(),
-                m.get_register_value(reg),
-                m.get_register_value(reg),
+                m.get_register_value(reg) as u16,
+                m.get_register_value(reg) as u16,
             )
             .expect("write str error");
         }
+
+        if self.opt.with_ip {
+            write!(trace, "      ip: {:#06x} ({})\n", m.ip, m.ip,).expect("write str error");
+        }
+
         if m.flags != Flags(0) {
             write!(trace, "   flags: {}", m.flags).expect("write str error");
         }

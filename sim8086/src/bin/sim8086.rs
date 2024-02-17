@@ -91,7 +91,7 @@ impl JMP {
     }
 
     fn get_offset(&self) -> i8 {
-        self.0[1] as i8
+        self.0.len() as i8 + self.0[1] as i8
     }
 
     fn set_label(&mut self, label: String) {
@@ -116,7 +116,7 @@ impl JMP {
         let dst = Encoding::Operand(OperandEncoding::Jmp(self.1.clone()));
 
         let name = Self::inst_type(self.0[0]).unwrap();
-        Inst::new(name, dst, src)
+        Inst::new(name, dst, src, self.0.len())
     }
 }
 
@@ -192,7 +192,12 @@ impl RM {
         };
 
         let name = Self::inst_type(self.0[0]).unwrap();
-        Inst::new(name, Encoding::Operand(dst), Encoding::Operand(src))
+        Inst::new(
+            name,
+            Encoding::Operand(dst),
+            Encoding::Operand(src),
+            self.0.len(),
+        )
     }
 }
 
@@ -317,7 +322,7 @@ impl IRM {
         };
 
         let name = IRMOpCode::with_reg(self.0[0], self.reg()).inst_type();
-        Inst::new(name, dst, src)
+        Inst::new(name, dst, src, self.0.len())
     }
 }
 
@@ -359,7 +364,12 @@ impl IR {
         });
 
         let inst_type = InstType::MOV;
-        Inst::new(inst_type, Encoding::Operand(dst), Encoding::Operand(src))
+        Inst::new(
+            inst_type,
+            Encoding::Operand(dst),
+            Encoding::Operand(src),
+            self.0.len(),
+        )
     }
 }
 
@@ -448,7 +458,12 @@ impl MA {
         };
 
         let inst_type = op_code.inst_type();
-        Inst::new(inst_type, Encoding::Operand(dst), Encoding::Operand(src))
+        Inst::new(
+            inst_type,
+            Encoding::Operand(dst),
+            Encoding::Operand(src),
+            self.0.len(),
+        )
     }
 }
 
@@ -496,6 +511,7 @@ impl AsmOp {
                 InstType::Label(format!("label_{}:", s)),
                 Encoding::Empty,
                 Encoding::Empty,
+                0,
             ),
         }
     }
@@ -545,7 +561,7 @@ fn parse(it: impl Iterator<Item = u8>) -> Vec<Result<Asm, String>> {
     let mut it = it.enumerate();
     let mut existed_labels = HashMap::new();
 
-    while let Some((mut ip, first)) = it.next() {
+    while let Some((ip, first)) = it.next() {
         let Some(mut asm) = Asm::new(ip, first) else {
             ops.push(Err(format!("{:b}", first)));
             continue;
@@ -557,11 +573,10 @@ fn parse(it: impl Iterator<Item = u8>) -> Vec<Result<Asm, String>> {
                 break;
             }
             for _ in 0..w {
-                let Some((i, data)) = it.next() else {
+                let Some((_, data)) = it.next() else {
                     dbg!(asm);
                     panic!()
                 };
-                ip = i;
                 asm.push(data);
             }
         }
@@ -574,7 +589,7 @@ fn parse(it: impl Iterator<Item = u8>) -> Vec<Result<Asm, String>> {
             let label_number = existed_labels.len() + 1;
             existed_labels.entry(label_ip).or_insert_with(|| {
                 ops.push(Ok(Asm {
-                    ip: label_ip,
+                    ip: label_ip - 1,
                     op: AsmOp::Label(label_number),
                 }));
                 label_number
@@ -595,7 +610,7 @@ fn parse(it: impl Iterator<Item = u8>) -> Vec<Result<Asm, String>> {
 }
 
 #[derive(Debug, Default)]
-struct Options {
+struct CmdOptions {
     flags: HashSet<String>,
     path: String,
 }
@@ -604,7 +619,7 @@ fn main() {
     let options = args()
         .into_iter()
         .skip(1)
-        .try_fold(Options::default(), |mut args, s| {
+        .try_fold(CmdOptions::default(), |mut args, s| {
             if s.starts_with("--") {
                 args.flags.insert(s.trim_start_matches("--").to_string());
             } else if args.path == "" {
@@ -618,10 +633,10 @@ fn main() {
         .expect("Provide unix path to 8086 binary file");
 
     let data = std::fs::read(&options.path).expect("Can't open given file");
-    let insts = parse(data.into_iter());
+    let asm_ops = parse(data.into_iter());
 
     if options.flags.is_empty() {
-        for inst in insts {
+        for inst in asm_ops {
             match inst.and_then(|x| Ok(x.decode())) {
                 Ok(op) => println!("{}", op.to_string()),
                 Err(e) => println!("{}", e),
@@ -629,14 +644,14 @@ fn main() {
         }
     } else if options.flags.contains("exec") {
         let mut m = sim8086::machine::Machine::default();
-        let mut tracer = sim8086::machine::Tracer::default();
+        let mut tracer = sim8086::machine::Tracer::with_options(sim8086::machine::TracerOptions {
+            with_ip: options.flags.contains("ip"),
+            ..sim8086::machine::TracerOptions::default()
+        });
 
-        let with_ip = options.flags.contains("ip");
-        for inst in insts {
-            match inst.and_then(|x| Ok(x.decode())) {
-                Ok(inst) => {
-                    tracer.trace_exec(&mut m, inst, with_ip);
-                }
+        for op in asm_ops {
+            match op.and_then(|op| Ok(op.decode())) {
+                Ok(inst) => tracer.trace_exec(&mut m, inst),
                 Err(e) => println!("{}", e),
             };
         }

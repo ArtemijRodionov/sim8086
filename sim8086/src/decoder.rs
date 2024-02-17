@@ -189,11 +189,17 @@ pub struct Inst {
     pub(crate) t: InstType,
     pub(crate) lhs: Encoding,
     pub(crate) rhs: Encoding,
+    pub(crate) length: usize,
 }
 
 impl Inst {
-    pub fn new(name: InstType, lhs: Encoding, rhs: Encoding) -> Self {
-        Self { t: name, lhs, rhs }
+    pub fn new(name: InstType, lhs: Encoding, rhs: Encoding, length: usize) -> Self {
+        Self {
+            t: name,
+            lhs,
+            rhs,
+            length,
+        }
     }
 }
 
