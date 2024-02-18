@@ -70,8 +70,8 @@ impl std::fmt::Display for Flags {
 }
 
 #[derive(Debug)]
-pub struct Step {
-    pub ip: (u16, u16),
+struct Step {
+    ip: (u16, u16),
     register: Option<(Register, i16, i16)>,
     flags: Option<(Flags, Flags)>,
 }
@@ -283,24 +283,24 @@ impl Tracer {
         registers.sort();
 
         let mut trace = "Final registers:\n".to_string();
+        let mut write_trace = |msg| write!(trace, "{}", msg).unwrap();
         for reg in registers {
-            write!(
-                trace,
+            write_trace(format!(
                 "{:>8}: {:#06x} ({})\n",
                 reg.to_string(),
                 m.get_register_value(reg) as u16,
                 m.get_register_value(reg) as u16,
-            )
-            .expect("write str error");
+            ));
         }
 
         if self.opt.with_ip {
-            write!(trace, "      ip: {:#06x} ({})\n", m.ip, m.ip,).expect("write str error");
+            write_trace(format!("      ip: {:#06x} ({})\n", m.ip, m.ip));
         }
 
         if m.flags != Flags(0) {
-            write!(trace, "   flags: {}", m.flags).expect("write str error");
+            write_trace(format!("   flags: {}", m.flags));
         }
+
         print!("{}", trace);
     }
 }
