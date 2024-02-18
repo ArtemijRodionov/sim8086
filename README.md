@@ -29,3 +29,9 @@ https://www.computerenhance.com/p/table-of-contents
 
 8. https://www.computerenhance.com/p/simulating-conditional-jumps
     * listing 48, 49
+
+9. https://www.computerenhance.com/p/simulating-memory
+    * listing 51, 52
+
+10. https://www.computerenhance.com/p/simulating-real-programs
+    * listing 54, 55

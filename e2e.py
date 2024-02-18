@@ -6,7 +6,7 @@ import subprocess
 
 default_decode_src = [37, 38, 39, 40, 41]
 default_exec_src = [43, 44, 46]
-default_exec_ip_src = [48, 49]
+default_exec_ip_src = [48, 49, 51]
 
 
 def green(msg):

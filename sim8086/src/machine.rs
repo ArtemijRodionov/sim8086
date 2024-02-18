@@ -78,7 +78,8 @@ struct Step {
 
 #[derive(Debug, Default)]
 pub struct Machine {
-    // I didn't bother with cascade behavior of registers
+    // I didn't bother with cascade behavior of registers,
+    // so only 16-bit registers are supported
     registers: [i16; 16],
     flags: Flags,
     ip: u16,
