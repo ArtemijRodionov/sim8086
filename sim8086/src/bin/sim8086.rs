@@ -113,7 +113,7 @@ impl JMP {
 
     fn decode(&self) -> Inst {
         let src = Encoding::Empty;
-        let dst = Encoding::Operand(OperandEncoding::Jmp(self.1.clone()));
+        let dst = Encoding::Operand(OperandEncoding::Jmp(self.0[1] as i8, self.1.to_string()));
 
         let name = Self::inst_type(self.0[0]).unwrap();
         Inst::new(name, dst, src, self.0.len())
@@ -643,17 +643,28 @@ fn main() {
             };
         }
     } else if options.flags.contains("exec") {
+        let asm_ops: Vec<Asm> = asm_ops
+            .into_iter()
+            .filter(|x| x.is_ok())
+            .map(|x| x.unwrap())
+            .collect();
+        let ip_idx: HashMap<usize, usize> = asm_ops
+            .iter()
+            .enumerate()
+            .map(|iasm| (iasm.1.ip, iasm.0))
+            .collect();
+
         let mut m = sim8086::machine::Machine::default();
         let mut tracer = sim8086::machine::Tracer::with_options(sim8086::machine::TracerOptions {
             with_ip: options.flags.contains("ip"),
             ..sim8086::machine::TracerOptions::default()
         });
 
-        for op in asm_ops {
-            match op.and_then(|op| Ok(op.decode())) {
-                Ok(inst) => tracer.trace_exec(&mut m, inst),
-                Err(e) => println!("{}", e),
-            };
+        let mut ip = 0;
+        let last_ip = asm_ops.last().unwrap().ip;
+        while ip <= last_ip {
+            let inst = asm_ops[ip_idx[&ip]].decode();
+            ip = tracer.trace_exec(&mut m, inst) as usize;
         }
         tracer.trace_state(&m);
     } else {

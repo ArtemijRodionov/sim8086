@@ -70,8 +70,8 @@ impl std::fmt::Display for Flags {
 }
 
 #[derive(Debug)]
-struct Step {
-    ip: (u16, u16),
+pub struct Step {
+    pub ip: (u16, u16),
     register: Option<(Register, i16, i16)>,
     flags: Option<(Flags, Flags)>,
 }
@@ -170,6 +170,15 @@ impl Machine {
                 let to_reg = self.registers[reg1.to_idx()] - self.registers[reg2.to_idx()];
                 self.update_flags(from_reg, to_reg);
             }
+            (
+                InstType::JNZ,
+                Encoding::Operand(OperandEncoding::Jmp(offset, _)),
+                Encoding::Empty,
+            ) => {
+                if !self.flags.is_zf() {
+                    self.ip = (self.ip as i16 + offset as i16) as u16;
+                }
+            }
             _ => {}
         };
 
@@ -244,7 +253,7 @@ impl Tracer {
         }
     }
 
-    pub fn trace_exec(&mut self, m: &mut Machine, inst: Inst) {
+    pub fn trace_exec(&mut self, m: &mut Machine, inst: Inst) -> u16 {
         let mut trace = inst.to_string();
         let mut write_trace = |msg| write!(trace, "{}", msg).unwrap();
         let fmt_flags = |from, to| format!(" flags:{}->{}", from, to);
@@ -252,21 +261,21 @@ impl Tracer {
         let fmt_ip = |from, to| format!(" ip:{:#x}->{:#x}", from, to);
 
         let step = m.exec(inst);
-        if step.register.is_some() || step.flags.is_some() {
-            write_trace(" ;".to_string());
-            if let Some((reg, from, to)) = step.register {
-                self.registers.insert(reg);
-                write_trace(fmt_reg(reg, from, to));
-            }
-            if self.opt.with_ip {
-                write_trace(fmt_ip(step.ip.0, step.ip.1));
-            }
-            if let Some((from, to)) = step.flags {
-                write_trace(fmt_flags(from, to));
-            }
+        write_trace(" ;".to_string());
+        if let Some((reg, from, to)) = step.register {
+            self.registers.insert(reg);
+            write_trace(fmt_reg(reg, from, to));
+        }
+        if self.opt.with_ip {
+            write_trace(fmt_ip(step.ip.0, step.ip.1));
+        }
+        if let Some((from, to)) = step.flags {
+            write_trace(fmt_flags(from, to));
         }
 
         println!("{}", trace);
+
+        step.ip.1
     }
 
     pub fn trace_state(&mut self, m: &Machine) {

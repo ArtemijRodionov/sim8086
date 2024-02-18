@@ -127,7 +127,7 @@ impl EffectiveAddress {
 pub enum OperandEncoding {
     Accumulator8,
     Accumulator16,
-    Jmp(String),
+    Jmp(i8, String),
     Memory(u16),
     Immediate(i16),
     Register(Register),
@@ -260,7 +260,7 @@ impl std::fmt::Display for OperandEncoding {
             f,
             "{}",
             match self {
-                Self::Jmp(e) => e.to_string(),
+                Self::Jmp(_, s) => s.to_string(),
                 Self::Accumulator8 => "al".to_string(),
                 Self::Accumulator16 => "ax".to_string(),
                 Self::Immediate(e) => e.to_string(),
