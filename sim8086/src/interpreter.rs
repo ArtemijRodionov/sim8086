@@ -75,6 +75,14 @@ struct Code {
     ip_insts_idx: HashMap<usize, usize>,
 }
 
+impl Code {
+    fn get_inst(&self, ip: usize) -> Option<Inst> {
+        self.ip_insts_idx
+            .get(&ip)
+            .map(|idx| self.insts[*idx].clone())
+    }
+}
+
 impl From<Vec<crate::decoder::Asm>> for Code {
     fn from(value: Vec<crate::decoder::Asm>) -> Self {
         Self {
@@ -88,14 +96,6 @@ impl From<Vec<crate::decoder::Asm>> for Code {
     }
 }
 
-impl Code {
-    fn get_inst(&self, ip: usize) -> Option<Inst> {
-        self.ip_insts_idx
-            .get(&ip)
-            .map(|idx| self.insts[*idx].clone())
-    }
-}
-
 #[derive(Debug)]
 struct Step {
     inst: Inst,
@@ -105,7 +105,7 @@ struct Step {
 }
 
 #[derive(Debug, Default)]
-pub struct Machine {
+pub struct Processor {
     // I didn't bother with cascade behavior of registers,
     // so only 16-bit registers are supported
     ip: u16,
@@ -116,17 +116,8 @@ pub struct Machine {
     // memory: Vec<u8>,
 }
 
-impl From<Vec<crate::decoder::Asm>> for Machine {
-    fn from(value: Vec<crate::decoder::Asm>) -> Self {
-        Self {
-            code: Code::from(value),
-            ..Self::default()
-        }
-    }
-}
-
-impl Machine {
-    fn get_register_value(&self, reg: Register) -> i16 {
+impl Processor {
+    fn register_value(&self, reg: Register) -> i16 {
         self.registers[reg.to_idx()]
     }
 
@@ -274,6 +265,15 @@ impl Machine {
     }
 }
 
+impl From<Vec<crate::decoder::Asm>> for Processor {
+    fn from(value: Vec<crate::decoder::Asm>) -> Self {
+        Self {
+            code: Code::from(value),
+            ..Self::default()
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct TracerOptions {
     pub with_ip: bool,
@@ -293,14 +293,14 @@ impl Tracer {
         }
     }
 
-    pub fn run(&mut self, m: &mut Machine) {
-        while let Some(step) = m.step() {
-            self.step(step);
+    pub fn run(&mut self, processor: &mut Processor) {
+        while let Some(step) = processor.step() {
+            self.trace(step);
         }
-        self.state(m);
+        self.state(processor);
     }
 
-    fn step(&mut self, step: Step) {
+    fn trace(&mut self, step: Step) {
         let mut trace = step.inst.to_string();
         let mut write_trace = |msg| write!(trace, "{}", msg).unwrap();
         let fmt_flags = |from, to| format!(" flags:{}->{}", from, to);
@@ -322,7 +322,7 @@ impl Tracer {
         println!("{}", trace);
     }
 
-    fn state(&mut self, m: &Machine) {
+    fn state(&mut self, processor: &Processor) {
         let mut registers = self.registers.iter().map(|x| *x).collect::<Vec<Register>>();
         registers.sort();
 
@@ -332,17 +332,20 @@ impl Tracer {
             write_trace(format!(
                 "{:>8}: {:#06x} ({})\n",
                 reg.to_string(),
-                m.get_register_value(reg) as u16,
-                m.get_register_value(reg) as u16,
+                processor.register_value(reg) as u16,
+                processor.register_value(reg) as u16,
             ));
         }
 
         if self.opt.with_ip {
-            write_trace(format!("      ip: {:#06x} ({})\n", m.ip, m.ip));
+            write_trace(format!(
+                "      ip: {:#06x} ({})\n",
+                processor.ip, processor.ip
+            ));
         }
 
-        if m.flags != Flags(0) {
-            write_trace(format!("   flags: {}", m.flags));
+        if processor.flags != Flags(0) {
+            write_trace(format!("   flags: {}", processor.flags));
         }
 
         print!("{}", trace);

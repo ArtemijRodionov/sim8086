@@ -40,13 +40,13 @@ fn main() {
             .map(|x| x.unwrap())
             .collect();
 
-        let mut m = sim8086::interpreter::Machine::from(asm_ops);
+        let mut processor = sim8086::interpreter::Processor::from(asm_ops);
         let mut tracer =
             sim8086::interpreter::Tracer::with_options(sim8086::interpreter::TracerOptions {
                 with_ip: options.flags.contains("ip"),
                 ..sim8086::interpreter::TracerOptions::default()
             });
-        tracer.run(&mut m);
+        tracer.run(&mut processor);
     } else {
         panic!("Unknown options {:?}", options);
     }
