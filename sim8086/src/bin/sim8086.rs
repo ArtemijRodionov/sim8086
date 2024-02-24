@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    env::args,
-};
+use std::{collections::HashSet, env::args};
 
 #[derive(Debug, Default)]
 struct CmdOptions {
@@ -42,26 +39,14 @@ fn main() {
             .filter(|x| x.is_ok())
             .map(|x| x.unwrap())
             .collect();
-        let ip_idx: HashMap<usize, usize> = asm_ops
-            .iter()
-            .enumerate()
-            .map(|iasm| (iasm.1.ip, iasm.0))
-            .collect();
 
-        let mut m = sim8086::interpreter::Machine::default();
+        let mut m = sim8086::interpreter::Machine::from(asm_ops);
         let mut tracer =
             sim8086::interpreter::Tracer::with_options(sim8086::interpreter::TracerOptions {
                 with_ip: options.flags.contains("ip"),
                 ..sim8086::interpreter::TracerOptions::default()
             });
-
-        let mut ip = 0;
-        let last_ip = asm_ops.last().unwrap().ip;
-        while ip <= last_ip {
-            let inst = asm_ops[ip_idx[&ip]].decode();
-            ip = tracer.trace_exec(&mut m, inst) as usize;
-        }
-        tracer.trace_state(&m);
+        tracer.run(&mut m);
     } else {
         panic!("Unknown options {:?}", options);
     }

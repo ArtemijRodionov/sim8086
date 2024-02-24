@@ -1,5 +1,5 @@
 use crate::ast::{Encoding, Inst, InstType, OperandEncoding, Register};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, PartialOrd, Ord)]
@@ -69,8 +69,36 @@ impl std::fmt::Display for Flags {
     }
 }
 
+#[derive(Debug, Default)]
+struct Code {
+    insts: Vec<Inst>,
+    ip_insts_idx: HashMap<usize, usize>,
+}
+
+impl From<Vec<crate::decoder::Asm>> for Code {
+    fn from(value: Vec<crate::decoder::Asm>) -> Self {
+        Self {
+            ip_insts_idx: value
+                .iter()
+                .enumerate()
+                .map(|iasm| (iasm.1.ip, iasm.0))
+                .collect(),
+            insts: value.into_iter().map(|x| x.decode()).collect(),
+        }
+    }
+}
+
+impl Code {
+    fn get_inst(&self, ip: usize) -> Option<Inst> {
+        self.ip_insts_idx
+            .get(&ip)
+            .map(|idx| self.insts[*idx].clone())
+    }
+}
+
 #[derive(Debug)]
 struct Step {
+    inst: Inst,
     ip: (u16, u16),
     register: Option<(Register, i16, i16)>,
     flags: Option<(Flags, Flags)>,
@@ -80,11 +108,21 @@ struct Step {
 pub struct Machine {
     // I didn't bother with cascade behavior of registers,
     // so only 16-bit registers are supported
-    registers: [i16; 16],
-    flags: Flags,
     ip: u16,
+    flags: Flags,
+    registers: [i16; 16],
+    code: Code,
     // stack: Vec<u8>,
     // memory: Vec<u8>,
+}
+
+impl From<Vec<crate::decoder::Asm>> for Machine {
+    fn from(value: Vec<crate::decoder::Asm>) -> Self {
+        Self {
+            code: Code::from(value),
+            ..Self::default()
+        }
+    }
 }
 
 impl Machine {
@@ -92,17 +130,17 @@ impl Machine {
         self.registers[reg.to_idx()]
     }
 
-    fn exec(&mut self, inst: Inst) -> Step {
+    fn step(&mut self) -> Option<Step> {
+        let inst = self.code.get_inst(self.ip as usize)?;
         let from_ip = self.ip;
         let from_flags = self.flags;
-
         let mut register_update = None;
 
-        match (inst.t, inst.lhs, inst.rhs) {
+        match (&inst.t, &inst.lhs, &inst.rhs) {
             (
                 InstType::MOV,
-                Encoding::Operand(OperandEncoding::Register(reg1)),
-                Encoding::Operand(OperandEncoding::Immediate(val)),
+                &Encoding::Operand(OperandEncoding::Register(reg1)),
+                &Encoding::Operand(OperandEncoding::Immediate(val)),
             ) => {
                 let from_reg = self.registers[reg1.to_idx()];
                 self.registers[reg1.to_idx()] = val;
@@ -112,8 +150,8 @@ impl Machine {
             }
             (
                 InstType::MOV,
-                Encoding::Operand(OperandEncoding::Register(reg1)),
-                Encoding::Operand(OperandEncoding::Register(reg2)),
+                &Encoding::Operand(OperandEncoding::Register(reg1)),
+                &Encoding::Operand(OperandEncoding::Register(reg2)),
             ) => {
                 let from_reg = self.registers[reg1.to_idx()];
                 self.registers[reg1.to_idx()] = self.registers[reg2.to_idx()];
@@ -123,8 +161,8 @@ impl Machine {
             }
             (
                 InstType::ADD,
-                Encoding::Operand(OperandEncoding::Register(reg1)),
-                Encoding::Operand(OperandEncoding::Immediate(val)),
+                &Encoding::Operand(OperandEncoding::Register(reg1)),
+                &Encoding::Operand(OperandEncoding::Immediate(val)),
             ) => {
                 let from_reg = self.registers[reg1.to_idx()];
                 self.registers[reg1.to_idx()] += val;
@@ -136,8 +174,8 @@ impl Machine {
             }
             (
                 InstType::SUB,
-                Encoding::Operand(OperandEncoding::Register(reg1)),
-                Encoding::Operand(OperandEncoding::Register(reg2)),
+                &Encoding::Operand(OperandEncoding::Register(reg1)),
+                &Encoding::Operand(OperandEncoding::Register(reg2)),
             ) => {
                 let from_reg = self.registers[reg1.to_idx()];
                 self.registers[reg1.to_idx()] -= self.registers[reg2.to_idx()];
@@ -150,8 +188,8 @@ impl Machine {
             }
             (
                 InstType::SUB,
-                Encoding::Operand(OperandEncoding::Register(reg1)),
-                Encoding::Operand(OperandEncoding::Immediate(val)),
+                &Encoding::Operand(OperandEncoding::Register(reg1)),
+                &Encoding::Operand(OperandEncoding::Immediate(val)),
             ) => {
                 let from_reg = self.registers[reg1.to_idx()];
                 self.registers[reg1.to_idx()] -= val;
@@ -173,7 +211,7 @@ impl Machine {
             }
             (
                 InstType::JNZ,
-                Encoding::Operand(OperandEncoding::Jmp(offset, _)),
+                &Encoding::Operand(OperandEncoding::Jmp(offset, _)),
                 Encoding::Empty,
             ) => {
                 if !self.flags.is_zf() {
@@ -190,11 +228,12 @@ impl Machine {
             flag_update = Some((from_flags, self.flags));
         }
 
-        Step {
+        Some(Step {
+            inst,
             ip: (from_ip, self.ip),
             flags: flag_update,
             register: register_update,
-        }
+        })
     }
 
     fn update_flags(&mut self, from_val: i16, to_val: i16) {
@@ -254,14 +293,20 @@ impl Tracer {
         }
     }
 
-    pub fn trace_exec(&mut self, m: &mut Machine, inst: Inst) -> u16 {
-        let mut trace = inst.to_string();
+    pub fn run(&mut self, m: &mut Machine) {
+        while let Some(step) = m.step() {
+            self.step(step);
+        }
+        self.state(m);
+    }
+
+    fn step(&mut self, step: Step) {
+        let mut trace = step.inst.to_string();
         let mut write_trace = |msg| write!(trace, "{}", msg).unwrap();
         let fmt_flags = |from, to| format!(" flags:{}->{}", from, to);
         let fmt_reg = |reg, from, to| format!(" {}:{:#x}->{:#x}", reg, from, to);
         let fmt_ip = |from, to| format!(" ip:{:#x}->{:#x}", from, to);
 
-        let step = m.exec(inst);
         write_trace(" ;".to_string());
         if let Some((reg, from, to)) = step.register {
             self.registers.insert(reg);
@@ -275,11 +320,9 @@ impl Tracer {
         }
 
         println!("{}", trace);
-
-        step.ip.1
     }
 
-    pub fn trace_state(&mut self, m: &Machine) {
+    fn state(&mut self, m: &Machine) {
         let mut registers = self.registers.iter().map(|x| *x).collect::<Vec<Register>>();
         registers.sort();
 

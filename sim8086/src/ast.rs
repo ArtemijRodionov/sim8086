@@ -185,6 +185,7 @@ pub enum InstType {
     Label(String),
 }
 
+#[derive(Debug, Clone)]
 pub struct Inst {
     pub(crate) t: InstType,
     pub(crate) lhs: Encoding,
