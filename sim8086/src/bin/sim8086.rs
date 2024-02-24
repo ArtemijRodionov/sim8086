@@ -3,7 +3,7 @@ use std::{
     env::args,
 };
 
-use sim8086::decoder::{Address, Encoding, Inst, InstType, Mode, OperandEncoding};
+use sim8086::ast::{Address, Encoding, Inst, InstType, Mode, OperandEncoding};
 
 fn mode_to_write(rm: u8, mode: u8) -> usize {
     match Mode::from(mode) {
@@ -654,11 +654,12 @@ fn main() {
             .map(|iasm| (iasm.1.ip, iasm.0))
             .collect();
 
-        let mut m = sim8086::machine::Machine::default();
-        let mut tracer = sim8086::machine::Tracer::with_options(sim8086::machine::TracerOptions {
-            with_ip: options.flags.contains("ip"),
-            ..sim8086::machine::TracerOptions::default()
-        });
+        let mut m = sim8086::interpreter::Machine::default();
+        let mut tracer =
+            sim8086::interpreter::Tracer::with_options(sim8086::interpreter::TracerOptions {
+                with_ip: options.flags.contains("ip"),
+                ..sim8086::interpreter::TracerOptions::default()
+            });
 
         let mut ip = 0;
         let last_ip = asm_ops.last().unwrap().ip;

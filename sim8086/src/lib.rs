@@ -1,3 +1,2 @@
-pub mod decoder;
-pub mod machine;
-
+pub mod ast;
+pub mod interpreter;

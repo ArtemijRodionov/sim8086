@@ -1,4 +1,4 @@
-use crate::decoder::{Encoding, Inst, InstType, OperandEncoding, Register};
+use crate::ast::{Encoding, Inst, InstType, OperandEncoding, Register};
 use std::collections::HashSet;
 use std::fmt::Write;
 
