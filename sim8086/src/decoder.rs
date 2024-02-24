@@ -1,6 +1,6 @@
 use crate::ast::{
-    Encoding, Inst, InstType, MemoryEncoding, Mode, OperandEncoding, Register, RegisterAddress,
-    RegisterSize,
+    Encoding, Inst, InstType, MemoryEncoding, Mode, OperandEncoding, OperandSize, OperandType,
+    Register, RegisterAddress,
 };
 use std::collections::HashMap;
 
@@ -19,7 +19,14 @@ fn mode_to_write(rm: u8, mode: u8) -> usize {
     }
 }
 
-fn mode_encode(data: &Vec<u8>, mode: u8, rm: u8, w: u8, size: RegisterSize) -> Encoding {
+fn mode_encode(
+    data: &Vec<u8>,
+    mode: u8,
+    rm: u8,
+    w: u8,
+    size: OperandSize,
+    t: OperandType,
+) -> Encoding {
     let mode = Mode::from(mode);
     if let Mode::Reg = mode {
         return Encoding::Operand(OperandEncoding::Register(Register::from(rm, w)));
@@ -47,11 +54,7 @@ fn mode_encode(data: &Vec<u8>, mode: u8, rm: u8, w: u8, size: RegisterSize) -> E
         _ => unreachable!(),
     };
 
-    if let RegisterSize::Byte = size {
-        Encoding::Byte(memory)
-    } else {
-        Encoding::Word(memory)
-    }
+    Encoding::Memory(memory, size, t)
 }
 
 #[derive(Debug)]
@@ -196,7 +199,14 @@ impl RM {
     fn decode(&self) -> Inst {
         let register = Register::from(self.reg(), self.w());
         let mut src = Encoding::Operand(OperandEncoding::Register(register));
-        let mut dst = mode_encode(&self.0, self.mode(), self.rm(), self.w(), register.size());
+        let mut dst = mode_encode(
+            &self.0,
+            self.mode(),
+            self.rm(),
+            self.w(),
+            register.size(),
+            OperandType::Implicit,
+        );
 
         if self.d() == 0b1 {
             (src, dst) = (dst, src);
@@ -321,11 +331,18 @@ impl IRM {
 
         let mode = Mode::from(self.mode());
         let size = match (mode, self.s(), self.w()) {
-            (_, 1, 1) => RegisterSize::Word,
-            (_, _, _) => RegisterSize::Byte,
+            (_, 1, 1) => OperandSize::Word,
+            (_, _, _) => OperandSize::Byte,
         };
 
-        let dst = mode_encode(&self.0, self.mode(), self.rm(), self.w(), size);
+        let dst = mode_encode(
+            &self.0,
+            self.mode(),
+            self.rm(),
+            self.w(),
+            size,
+            OperandType::Explicit,
+        );
 
         let name = IRMOpCode::with_reg(self.0[0], self.reg()).inst_type();
         Inst::new(name, dst, src, self.0.len())
@@ -443,7 +460,7 @@ impl MA {
     fn decode(&self) -> Inst {
         let is_wide = self.w() == 1;
 
-        let (mut dst, src_val) = if is_wide {
+        let (dst, src_val) = if is_wide {
             let mem = ((self.0[2] as i16) << 8) | self.0[1] as i16;
             (OperandEncoding::Accumulator16, mem)
         } else {
@@ -455,7 +472,11 @@ impl MA {
         let op_code = MAOpCode::from(self.0[0]).unwrap();
         let src = if matches!(op_code, MAOpCode::Mov) {
             // TODO size
-            let mut src = Encoding::Word(MemoryEncoding::Memory(src_val as u16));
+            let mut src = Encoding::Memory(
+                MemoryEncoding::Memory(src_val as u16),
+                OperandSize::Word,
+                OperandType::Implicit,
+            );
             if self.d() == 1 {
                 (dst, src) = (src, dst);
             };

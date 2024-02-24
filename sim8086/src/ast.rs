@@ -19,7 +19,13 @@ impl Mode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Ord, Eq, Hash)]
-pub(crate) enum RegisterSize {
+pub(crate) enum OperandType {
+    Explicit,
+    Implicit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Ord, Eq, Hash)]
+pub(crate) enum OperandSize {
     Byte,
     Word,
 }
@@ -67,7 +73,7 @@ impl Register {
         }
     }
 
-    pub(crate) fn size(self) -> RegisterSize {
+    pub(crate) fn size(self) -> OperandSize {
         match self {
             Self::AL
             | Self::BL
@@ -76,7 +82,7 @@ impl Register {
             | Self::AH
             | Self::BH
             | Self::CH
-            | Self::DH => RegisterSize::Byte,
+            | Self::DH => OperandSize::Byte,
             Self::AX
             | Self::BX
             | Self::CX
@@ -84,7 +90,7 @@ impl Register {
             | Self::SP
             | Self::BP
             | Self::SI
-            | Self::DI => RegisterSize::Word,
+            | Self::DI => OperandSize::Word,
         }
     }
 
@@ -151,7 +157,7 @@ impl EffectiveAddress {
 }
 
 #[derive(Debug, Clone)]
-pub enum OperandEncoding {
+pub(crate) enum OperandEncoding {
     Accumulator8,
     Accumulator16,
     Jmp(i8, String),
@@ -175,11 +181,10 @@ impl MemoryEncoding {
 }
 
 #[derive(Debug, Clone)]
-pub enum Encoding {
+pub(crate) enum Encoding {
     Empty,
     Operand(OperandEncoding),
-    Byte(MemoryEncoding),
-    Word(MemoryEncoding),
+    Memory(MemoryEncoding, OperandSize, OperandType),
 }
 
 #[derive(Debug, Clone)]
@@ -220,7 +225,7 @@ pub struct Inst {
 }
 
 impl Inst {
-    pub fn new(name: InstType, lhs: Encoding, rhs: Encoding, length: usize) -> Self {
+    pub(crate) fn new(name: InstType, lhs: Encoding, rhs: Encoding, length: usize) -> Self {
         Self {
             t: name,
             lhs,
@@ -310,6 +315,19 @@ impl std::fmt::Display for MemoryEncoding {
     }
 }
 
+impl std::fmt::Display for OperandSize {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Byte => "byte",
+                Self::Word => "word",
+            }
+        )
+    }
+}
+
 impl std::fmt::Display for Encoding {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
@@ -317,8 +335,8 @@ impl std::fmt::Display for Encoding {
             "{}",
             match self {
                 Self::Operand(o) => o.to_string(),
-                Self::Byte(o) => format!("byte {}", o),
-                Self::Word(o) => format!("word {}", o),
+                Self::Memory(o, size, OperandType::Explicit) => format!("{} {}", size, o),
+                Self::Memory(o, _, OperandType::Implicit) => o.to_string(),
                 Self::Empty => "".to_string(),
             }
         )

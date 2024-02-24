@@ -1,6 +1,6 @@
 use crate::ast::{
-    EffectiveAddress, Encoding, Inst, InstType, MemoryEncoding, OperandEncoding, Register,
-    RegisterAddress,
+    EffectiveAddress, Encoding, Inst, InstType, MemoryEncoding, OperandEncoding, OperandSize,
+    Register, RegisterAddress,
 };
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
@@ -157,7 +157,7 @@ impl Processor {
             }
             (
                 InstType::MOV,
-                &Encoding::Word(MemoryEncoding::Memory(address)),
+                &Encoding::Memory(MemoryEncoding::Memory(address), OperandSize::Word, _),
                 &Encoding::Operand(OperandEncoding::Immediate(val)),
             ) => {
                 self.memory[address as usize] = (val & 0xFF) as u8;
@@ -165,10 +165,14 @@ impl Processor {
             }
             (
                 InstType::MOV,
-                &Encoding::Word(MemoryEncoding::EffectiveAddress(EffectiveAddress {
-                    register: RegisterAddress::BX,
-                    disp,
-                })),
+                &Encoding::Memory(
+                    MemoryEncoding::EffectiveAddress(EffectiveAddress {
+                        register: RegisterAddress::BX,
+                        disp,
+                    }),
+                    OperandSize::Word,
+                    _,
+                ),
                 &Encoding::Operand(OperandEncoding::Immediate(val)),
             ) => {
                 let address = self.registers[Register::BX.to_idx()] + disp;
@@ -189,7 +193,7 @@ impl Processor {
             (
                 InstType::MOV,
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
-                &Encoding::Word(MemoryEncoding::Memory(address)),
+                &Encoding::Memory(MemoryEncoding::Memory(address), OperandSize::Word, _),
             ) => {
                 let from_reg = self.registers[reg1.to_idx()];
                 let val = ((self.memory[address as usize + 1] as u16) << 8)
