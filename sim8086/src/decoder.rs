@@ -1,4 +1,7 @@
-use crate::ast::{Encoding, Inst, InstType, Mode, OperandEncoding, RegisterAddress};
+use crate::ast::{
+    Encoding, Inst, InstType, MemoryEncoding, Mode, OperandEncoding, Register, RegisterAddress,
+    RegisterSize,
+};
 use std::collections::HashMap;
 
 fn mode_to_write(rm: u8, mode: u8) -> usize {
@@ -16,27 +19,38 @@ fn mode_to_write(rm: u8, mode: u8) -> usize {
     }
 }
 
-fn mode_encode(data: &Vec<u8>, mode: u8, rm: u8, w: u8) -> OperandEncoding {
-    match Mode::from(mode) {
-        Mode::Reg => OperandEncoding::register(rm, w),
+fn mode_encode(data: &Vec<u8>, mode: u8, rm: u8, w: u8, size: RegisterSize) -> Encoding {
+    let mode = Mode::from(mode);
+    if let Mode::Reg = mode {
+        return Encoding::Operand(OperandEncoding::Register(Register::from(rm, w)));
+    }
+
+    let memory = match mode {
         Mode::Mem0Disp => {
             let address = RegisterAddress::from(rm);
             if matches!(address, RegisterAddress::DirectBP) {
                 let direct = (data[3] as u16) << 8 | (data[2] as u16);
-                OperandEncoding::Memory(direct)
+                MemoryEncoding::Memory(direct)
             } else {
-                OperandEncoding::effective_address(address, 0)
+                MemoryEncoding::effective_address(address, 0)
             }
         }
         Mode::Mem1Disp => {
             let address = RegisterAddress::from(rm);
-            OperandEncoding::effective_address(address, (data[2] as i8) as i16)
+            MemoryEncoding::effective_address(address, (data[2] as i8) as i16)
         }
         Mode::Mem2Disp => {
             let address = RegisterAddress::from(rm);
             let disp = (data[3] as i16) << 8 | (data[2] as i16);
-            OperandEncoding::effective_address(address, disp)
+            MemoryEncoding::effective_address(address, disp)
         }
+        _ => unreachable!(),
+    };
+
+    if let RegisterSize::Byte = size {
+        Encoding::Byte(memory)
+    } else {
+        Encoding::Word(memory)
     }
 }
 
@@ -180,20 +194,16 @@ impl RM {
     }
 
     fn decode(&self) -> Inst {
-        let mut src = OperandEncoding::register(self.reg(), self.w());
-        let mut dst = mode_encode(&self.0, self.mode(), self.rm(), self.w());
+        let register = Register::from(self.reg(), self.w());
+        let mut src = Encoding::Operand(OperandEncoding::Register(register));
+        let mut dst = mode_encode(&self.0, self.mode(), self.rm(), self.w(), register.size());
 
         if self.d() == 0b1 {
             (src, dst) = (dst, src);
         };
 
         let name = Self::inst_type(self.0[0]).unwrap();
-        Inst::new(
-            name,
-            Encoding::Operand(dst),
-            Encoding::Operand(src),
-            self.0.len(),
-        )
+        Inst::new(name, dst, src, self.0.len())
     }
 }
 
@@ -310,12 +320,12 @@ impl IRM {
         }));
 
         let mode = Mode::from(self.mode());
-        let rm = mode_encode(&self.0, self.mode(), self.rm(), self.w());
-        let dst = match (mode, self.s(), self.w()) {
-            (Mode::Reg, _, _) => Encoding::Operand(rm),
-            (_, 1, 1) => Encoding::Word(rm),
-            (_, _, _) => Encoding::Byte(rm),
+        let size = match (mode, self.s(), self.w()) {
+            (_, 1, 1) => RegisterSize::Word,
+            (_, _, _) => RegisterSize::Byte,
         };
+
+        let dst = mode_encode(&self.0, self.mode(), self.rm(), self.w(), size);
 
         let name = IRMOpCode::with_reg(self.0[0], self.reg()).inst_type();
         Inst::new(name, dst, src, self.0.len())
@@ -352,7 +362,7 @@ impl IR {
         self.0.push(data);
     }
     fn decode(&self) -> Inst {
-        let dst = OperandEncoding::register(self.reg(), self.w());
+        let dst = OperandEncoding::Register(Register::from(self.reg(), self.w()));
         let src = OperandEncoding::Immediate(if self.w() == 1 {
             ((self.0[2] as i16) << 8) | self.0[1] as i16
         } else {
@@ -440,26 +450,23 @@ impl MA {
             let mem = (self.0[1] as i8) as i16;
             (OperandEncoding::Accumulator8, mem)
         };
+        let mut dst = Encoding::Operand(dst);
 
         let op_code = MAOpCode::from(self.0[0]).unwrap();
         let src = if matches!(op_code, MAOpCode::Mov) {
-            let mut src = OperandEncoding::Memory(src_val as u16);
+            // TODO size
+            let mut src = Encoding::Word(MemoryEncoding::Memory(src_val as u16));
             if self.d() == 1 {
                 (dst, src) = (src, dst);
             };
 
             src
         } else {
-            OperandEncoding::Immediate(src_val)
+            Encoding::Operand(OperandEncoding::Immediate(src_val))
         };
 
         let inst_type = op_code.inst_type();
-        Inst::new(
-            inst_type,
-            Encoding::Operand(dst),
-            Encoding::Operand(src),
-            self.0.len(),
-        )
+        Inst::new(inst_type, dst, src, self.0.len())
     }
 }
 

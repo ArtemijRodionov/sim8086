@@ -19,6 +19,12 @@ impl Mode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Ord, Eq, Hash)]
+pub(crate) enum RegisterSize {
+    Byte,
+    Word,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Ord, Eq, Hash)]
 pub enum Register {
     AX,
     BX,
@@ -39,7 +45,7 @@ pub enum Register {
 }
 
 impl Register {
-    fn from(reg: u8, w: u8) -> Self {
+    pub(crate) fn from(reg: u8, w: u8) -> Self {
         match (reg & 0b111, w & 0b1) {
             (0b000, 0b0) => Self::AL,
             (0b001, 0b0) => Self::CL,
@@ -58,6 +64,27 @@ impl Register {
             (0b110, 0b1) => Self::SI,
             (0b111, 0b1) => Self::DI,
             _ => unreachable!(),
+        }
+    }
+
+    pub(crate) fn size(self) -> RegisterSize {
+        match self {
+            Self::AL
+            | Self::BL
+            | Self::CL
+            | Self::DL
+            | Self::AH
+            | Self::BH
+            | Self::CH
+            | Self::DH => RegisterSize::Byte,
+            Self::AX
+            | Self::BX
+            | Self::CX
+            | Self::DX
+            | Self::SP
+            | Self::BP
+            | Self::SI
+            | Self::DI => RegisterSize::Word,
         }
     }
 
@@ -128,21 +155,20 @@ pub enum OperandEncoding {
     Accumulator8,
     Accumulator16,
     Jmp(i8, String),
-    Memory(u16),
     Immediate(i16),
     Register(Register),
+}
+
+#[derive(Debug, Clone)]
+pub enum MemoryEncoding {
+    Memory(u16),
     EffectiveAddress(EffectiveAddress),
 }
 
-impl OperandEncoding {
+impl MemoryEncoding {
     pub fn direct(direct: u16) -> Self {
         Self::Memory(direct)
     }
-
-    pub fn register(reg: u8, w: u8) -> Self {
-        Self::Register(Register::from(reg, w))
-    }
-
     pub fn effective_address(address: RegisterAddress, disp: i16) -> Self {
         Self::EffectiveAddress(EffectiveAddress::new(address, disp))
     }
@@ -152,8 +178,8 @@ impl OperandEncoding {
 pub enum Encoding {
     Empty,
     Operand(OperandEncoding),
-    Byte(OperandEncoding),
-    Word(OperandEncoding),
+    Byte(MemoryEncoding),
+    Word(MemoryEncoding),
 }
 
 #[derive(Debug, Clone)]
@@ -265,8 +291,19 @@ impl std::fmt::Display for OperandEncoding {
                 Self::Accumulator8 => "al".to_string(),
                 Self::Accumulator16 => "ax".to_string(),
                 Self::Immediate(e) => e.to_string(),
-                Self::Memory(e) => format!("[{}]", e),
                 Self::Register(r) => r.to_string(),
+            }
+        )
+    }
+}
+
+impl std::fmt::Display for MemoryEncoding {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Memory(e) => format!("[{}]", e),
                 Self::EffectiveAddress(e) => e.to_string(),
             }
         )

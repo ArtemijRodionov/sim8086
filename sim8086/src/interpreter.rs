@@ -1,5 +1,6 @@
 use crate::ast::{
-    EffectiveAddress, Encoding, Inst, InstType, OperandEncoding, Register, RegisterAddress,
+    EffectiveAddress, Encoding, Inst, InstType, MemoryEncoding, OperandEncoding, Register,
+    RegisterAddress,
 };
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
@@ -156,7 +157,7 @@ impl Processor {
             }
             (
                 InstType::MOV,
-                &Encoding::Word(OperandEncoding::Memory(address)),
+                &Encoding::Word(MemoryEncoding::Memory(address)),
                 &Encoding::Operand(OperandEncoding::Immediate(val)),
             ) => {
                 self.memory[address as usize] = (val & 0xFF) as u8;
@@ -164,7 +165,7 @@ impl Processor {
             }
             (
                 InstType::MOV,
-                &Encoding::Word(OperandEncoding::EffectiveAddress(EffectiveAddress {
+                &Encoding::Word(MemoryEncoding::EffectiveAddress(EffectiveAddress {
                     register: RegisterAddress::BX,
                     disp,
                 })),
@@ -188,7 +189,7 @@ impl Processor {
             (
                 InstType::MOV,
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
-                &Encoding::Operand(OperandEncoding::Memory(address)),
+                &Encoding::Word(MemoryEncoding::Memory(address)),
             ) => {
                 let from_reg = self.registers[reg1.to_idx()];
                 let val = ((self.memory[address as usize + 1] as u16) << 8)
@@ -347,9 +348,12 @@ impl Tracer {
         let fmt_ip = |from, to| format!(" ip:{:#x}->{:#x}", from, to);
 
         write_trace(" ;".to_string());
-        if let Some((reg, from, to)) = step.register {
-            self.registers.insert(reg);
-            write_trace(fmt_reg(reg, from, to));
+        match step.register {
+            Some((reg, from, to)) if from != to => {
+                self.registers.insert(reg);
+                write_trace(fmt_reg(reg, from, to));
+            }
+            _ => {}
         }
         if self.opt.with_ip {
             write_trace(fmt_ip(step.ip.0, step.ip.1));
