@@ -1,10 +1,10 @@
-use crate::ast::{Address, Encoding, Inst, InstType, Mode, OperandEncoding};
+use crate::ast::{Encoding, Inst, InstType, Mode, OperandEncoding, RegisterAddress};
 use std::collections::HashMap;
 
 fn mode_to_write(rm: u8, mode: u8) -> usize {
     match Mode::from(mode) {
         Mode::Mem0Disp => {
-            if let Address::DirectBP = Address::from(rm) {
+            if let RegisterAddress::DirectBP = RegisterAddress::from(rm) {
                 2
             } else {
                 0
@@ -20,8 +20,8 @@ fn mode_encode(data: &Vec<u8>, mode: u8, rm: u8, w: u8) -> OperandEncoding {
     match Mode::from(mode) {
         Mode::Reg => OperandEncoding::register(rm, w),
         Mode::Mem0Disp => {
-            let address = Address::from(rm);
-            if matches!(address, Address::DirectBP) {
+            let address = RegisterAddress::from(rm);
+            if matches!(address, RegisterAddress::DirectBP) {
                 let direct = (data[3] as u16) << 8 | (data[2] as u16);
                 OperandEncoding::Memory(direct)
             } else {
@@ -29,11 +29,11 @@ fn mode_encode(data: &Vec<u8>, mode: u8, rm: u8, w: u8) -> OperandEncoding {
             }
         }
         Mode::Mem1Disp => {
-            let address = Address::from(rm);
+            let address = RegisterAddress::from(rm);
             OperandEncoding::effective_address(address, (data[2] as i8) as i16)
         }
         Mode::Mem2Disp => {
-            let address = Address::from(rm);
+            let address = RegisterAddress::from(rm);
             let disp = (data[3] as i16) << 8 | (data[2] as i16);
             OperandEncoding::effective_address(address, disp)
         }

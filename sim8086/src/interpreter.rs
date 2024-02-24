@@ -1,4 +1,6 @@
-use crate::ast::{Encoding, Inst, InstType, OperandEncoding, Register};
+use crate::ast::{
+    EffectiveAddress, Encoding, Inst, InstType, OperandEncoding, Register, RegisterAddress,
+};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
@@ -126,7 +128,7 @@ impl Processor {
     pub fn new(code: Code) -> Self {
         Self {
             code: Code::from(code),
-            memory: Vec::with_capacity(1024 * 1024),
+            memory: vec![0; 1024 * 1024],
             ..Self::default()
         }
     }
@@ -154,11 +156,44 @@ impl Processor {
             }
             (
                 InstType::MOV,
+                &Encoding::Word(OperandEncoding::Memory(address)),
+                &Encoding::Operand(OperandEncoding::Immediate(val)),
+            ) => {
+                self.memory[address as usize] = (val & 0xFF) as u8;
+                self.memory[address as usize + 1] = ((val >> 8) & 0xFF) as u8;
+            }
+            (
+                InstType::MOV,
+                &Encoding::Word(OperandEncoding::EffectiveAddress(EffectiveAddress {
+                    register: RegisterAddress::BX,
+                    disp,
+                })),
+                &Encoding::Operand(OperandEncoding::Immediate(val)),
+            ) => {
+                let address = self.registers[Register::BX.to_idx()] + disp;
+                self.memory[address as usize] = (val & 0xFF) as u8;
+                self.memory[address as usize + 1] = ((val >> 8) & 0xFF) as u8;
+            }
+            (
+                InstType::MOV,
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
                 &Encoding::Operand(OperandEncoding::Register(reg2)),
             ) => {
                 let from_reg = self.registers[reg1.to_idx()];
                 self.registers[reg1.to_idx()] = self.registers[reg2.to_idx()];
+                let to_reg = self.registers[reg1.to_idx()];
+
+                register_update = Some((reg1, from_reg, to_reg));
+            }
+            (
+                InstType::MOV,
+                &Encoding::Operand(OperandEncoding::Register(reg1)),
+                &Encoding::Operand(OperandEncoding::Memory(address)),
+            ) => {
+                let from_reg = self.registers[reg1.to_idx()];
+                let val = ((self.memory[address as usize + 1] as u16) << 8)
+                    | self.memory[address as usize] as u16;
+                self.registers[reg1.to_idx()] = val as i16;
                 let to_reg = self.registers[reg1.to_idx()];
 
                 register_update = Some((reg1, from_reg, to_reg));

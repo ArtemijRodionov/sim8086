@@ -84,7 +84,7 @@ impl Register {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum Address {
+pub enum RegisterAddress {
     BXSI,
     BXDI,
     BPSI,
@@ -95,7 +95,7 @@ pub enum Address {
     DirectBP,
 }
 
-impl Address {
+impl RegisterAddress {
     pub fn from(address: u8) -> Self {
         match address & 0b111 {
             0b000 => Self::BXSI,
@@ -113,13 +113,13 @@ impl Address {
 
 #[derive(Debug, Clone, Copy)]
 pub struct EffectiveAddress {
-    address: Address,
-    disp: i16,
+    pub(crate) register: RegisterAddress,
+    pub(crate) disp: i16,
 }
 
 impl EffectiveAddress {
-    fn new(address: Address, disp: i16) -> Self {
-        Self { address, disp }
+    fn new(register: RegisterAddress, disp: i16) -> Self {
+        Self { register, disp }
     }
 }
 
@@ -143,7 +143,7 @@ impl OperandEncoding {
         Self::Register(Register::from(reg, w))
     }
 
-    pub fn effective_address(address: Address, disp: i16) -> Self {
+    pub fn effective_address(address: RegisterAddress, disp: i16) -> Self {
         Self::EffectiveAddress(EffectiveAddress::new(address, disp))
     }
 }
@@ -209,15 +209,15 @@ impl std::fmt::Display for EffectiveAddress {
         write!(
             f,
             "[{}{}]",
-            match self.address {
-                Address::BXSI => "bx + si",
-                Address::BXDI => "bx + di",
-                Address::BPSI => "bp + si",
-                Address::BPDI => "bp + di",
-                Address::SI => "si",
-                Address::DI => "di",
-                Address::BX => "bx",
-                Address::DirectBP => "bp",
+            match self.register {
+                RegisterAddress::BXSI => "bx + si",
+                RegisterAddress::BXDI => "bx + di",
+                RegisterAddress::BPSI => "bp + si",
+                RegisterAddress::BPDI => "bp + di",
+                RegisterAddress::SI => "si",
+                RegisterAddress::DI => "di",
+                RegisterAddress::BX => "bx",
+                RegisterAddress::DirectBP => "bp",
             },
             match self.disp {
                 0 => "".to_string(),
