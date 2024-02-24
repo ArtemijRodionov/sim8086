@@ -34,13 +34,13 @@ fn main() {
             };
         }
     } else if options.flags.contains("exec") {
-        let asm_ops: Vec<sim8086::decoder::Asm> = asm_ops
+        let asm_ops: sim8086::interpreter::Code = asm_ops
             .into_iter()
             .filter(|x| x.is_ok())
             .map(|x| x.unwrap())
             .collect();
 
-        let mut processor = sim8086::interpreter::Processor::from(asm_ops);
+        let mut processor = sim8086::interpreter::Processor::new(asm_ops);
         let mut tracer =
             sim8086::interpreter::Tracer::with_options(sim8086::interpreter::TracerOptions {
                 with_ip: options.flags.contains("ip"),

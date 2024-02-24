@@ -70,7 +70,7 @@ impl std::fmt::Display for Flags {
 }
 
 #[derive(Debug, Default)]
-struct Code {
+pub struct Code {
     insts: Vec<Inst>,
     ip_insts_idx: HashMap<usize, usize>,
 }
@@ -96,6 +96,12 @@ impl From<Vec<crate::decoder::Asm>> for Code {
     }
 }
 
+impl FromIterator<crate::decoder::Asm> for Code {
+    fn from_iter<T: IntoIterator<Item = crate::decoder::Asm>>(iter: T) -> Self {
+        Self::from(iter.into_iter().collect::<Vec<crate::decoder::Asm>>())
+    }
+}
+
 #[derive(Debug)]
 struct Step {
     inst: Inst,
@@ -112,11 +118,18 @@ pub struct Processor {
     flags: Flags,
     registers: [i16; 16],
     code: Code,
+    memory: Vec<u8>,
     // stack: Vec<u8>,
-    // memory: Vec<u8>,
 }
 
 impl Processor {
+    pub fn new(code: Code) -> Self {
+        Self {
+            code: Code::from(code),
+            memory: Vec::with_capacity(1024 * 1024),
+            ..Self::default()
+        }
+    }
     fn register_value(&self, reg: Register) -> i16 {
         self.registers[reg.to_idx()]
     }
@@ -261,15 +274,6 @@ impl Processor {
             self.flags = self.flags.set_af();
         } else {
             self.flags = self.flags.unset_af();
-        }
-    }
-}
-
-impl From<Vec<crate::decoder::Asm>> for Processor {
-    fn from(value: Vec<crate::decoder::Asm>) -> Self {
-        Self {
-            code: Code::from(value),
-            ..Self::default()
         }
     }
 }
