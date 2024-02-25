@@ -104,14 +104,7 @@ impl Register {
             Self::BP => 5,
             Self::SI => 6,
             Self::DI => 7,
-            Self::AL => 8,
-            Self::BL => 9,
-            Self::CL => 10,
-            Self::DL => 11,
-            Self::AH => 12,
-            Self::BH => 13,
-            Self::CH => 14,
-            Self::DH => 15,
+            _ => unimplemented!(),
         }
     }
 }

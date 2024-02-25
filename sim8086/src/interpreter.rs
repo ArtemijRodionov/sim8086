@@ -6,6 +6,22 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, PartialOrd, Ord)]
+struct Registers(u128);
+impl Registers {
+    fn load(self, reg: Register) -> i16 {
+        ((self.0 >> (16 * reg.to_idx())) & 0xFFFF) as i16
+    }
+    fn store(self, reg: Register, val: i16) -> Registers {
+        let idx = reg.to_idx();
+        let val = (val as u16) as u128;
+        let left = self.0 & (((1 << ((7 - idx) * 16)) - 1) << ((idx + 1) * 16));
+        let mid = val << (idx * 16);
+        let right = self.0 & ((1 << (idx * 16)) - 1);
+        Self(left | mid | right)
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, PartialOrd, Ord)]
 struct Flags(u16);
 
 macro_rules! bit_field_is {
@@ -119,7 +135,7 @@ pub struct Processor {
     // so only 16-bit registers are supported
     ip: u16,
     flags: Flags,
-    registers: [i16; 16],
+    registers: Registers,
     code: Code,
     memory: Vec<u8>,
     // stack: Vec<u8>,
@@ -133,15 +149,12 @@ impl Processor {
             ..Self::default()
         }
     }
-    fn register_value(&self, reg: Register) -> i16 {
-        self.registers[reg.to_idx()]
-    }
 
     fn step(&mut self) -> Option<Step> {
         let inst = self.code.get_inst(self.ip as usize)?;
         let from_ip = self.ip;
         let from_flags = self.flags;
-        let mut register_update = None;
+        let from_registers = self.registers;
 
         match (&inst.t, &inst.lhs, &inst.rhs) {
             (
@@ -149,109 +162,75 @@ impl Processor {
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
                 &Encoding::Operand(OperandEncoding::Immediate(val)),
             ) => {
-                let from_reg = self.registers[reg1.to_idx()];
-                self.registers[reg1.to_idx()] = val;
-                let to_reg = self.registers[reg1.to_idx()];
-
-                register_update = Some((reg1, from_reg, to_reg));
+                self.store_register(reg1, val);
             }
             (
                 InstType::MOV,
                 &Encoding::Memory(MemoryEncoding::Memory(address), OperandSize::Word, _),
                 &Encoding::Operand(OperandEncoding::Immediate(val)),
-            ) => {
-                self.memory[address as usize] = (val & 0xFF) as u8;
-                self.memory[address as usize + 1] = ((val >> 8) & 0xFF) as u8;
-            }
+            ) => self.store_memory(address, val),
             (
                 InstType::MOV,
-                &Encoding::Memory(
-                    MemoryEncoding::EffectiveAddress(EffectiveAddress {
-                        register: RegisterAddress::BX,
-                        disp,
-                    }),
-                    OperandSize::Word,
-                    _,
-                ),
+                &Encoding::Memory(MemoryEncoding::EffectiveAddress(ea), OperandSize::Word, _),
                 &Encoding::Operand(OperandEncoding::Immediate(val)),
-            ) => {
-                let address = self.registers[Register::BX.to_idx()] + disp;
-                self.memory[address as usize] = (val & 0xFF) as u8;
-                self.memory[address as usize + 1] = ((val >> 8) & 0xFF) as u8;
-            }
+            ) => self.store_memory(self.translate_effective_address(ea), val),
+            (
+                InstType::MOV,
+                &Encoding::Memory(MemoryEncoding::Memory(address), OperandSize::Word, _),
+                &Encoding::Operand(OperandEncoding::Register(reg1)),
+            ) => self.store_memory(address, self.registers.load(reg1)),
+            (
+                InstType::MOV,
+                &Encoding::Memory(MemoryEncoding::EffectiveAddress(ea), OperandSize::Word, _),
+                &Encoding::Operand(OperandEncoding::Register(reg1)),
+            ) => self.store_memory(
+                self.translate_effective_address(ea),
+                self.registers.load(reg1),
+            ),
             (
                 InstType::MOV,
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
                 &Encoding::Operand(OperandEncoding::Register(reg2)),
-            ) => {
-                let from_reg = self.registers[reg1.to_idx()];
-                self.registers[reg1.to_idx()] = self.registers[reg2.to_idx()];
-                let to_reg = self.registers[reg1.to_idx()];
-
-                register_update = Some((reg1, from_reg, to_reg));
-            }
+            ) => self.store_register(reg1, self.registers.load(reg2)),
             (
                 InstType::MOV,
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
                 &Encoding::Memory(MemoryEncoding::Memory(address), OperandSize::Word, _),
-            ) => {
-                let from_reg = self.registers[reg1.to_idx()];
-                let val = ((self.memory[address as usize + 1] as u16) << 8)
-                    | self.memory[address as usize] as u16;
-                self.registers[reg1.to_idx()] = val as i16;
-                let to_reg = self.registers[reg1.to_idx()];
-
-                register_update = Some((reg1, from_reg, to_reg));
-            }
+            ) => self.store_register(reg1, self.load_memory(address)),
+            (
+                InstType::MOV,
+                &Encoding::Operand(OperandEncoding::Register(reg1)),
+                &Encoding::Memory(MemoryEncoding::EffectiveAddress(ea), OperandSize::Word, _),
+            ) => self.store_register(reg1, self.load_memory(self.translate_effective_address(ea))),
             (
                 InstType::ADD,
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
                 &Encoding::Operand(OperandEncoding::Immediate(val)),
-            ) => {
-                let from_reg = self.registers[reg1.to_idx()];
-                self.registers[reg1.to_idx()] += val;
-                let to_reg = self.registers[reg1.to_idx()];
-
-                register_update = Some((reg1, from_reg, to_reg));
-                self.update_flags(from_reg, to_reg);
-                self.update_add_flags(from_reg, val);
-            }
+            ) => self.store_add(reg1, val),
+            (
+                InstType::ADD,
+                &Encoding::Operand(OperandEncoding::Register(reg1)),
+                &Encoding::Operand(OperandEncoding::Register(reg2)),
+            ) => self.store_add(reg1, self.registers.load(reg2)),
             (
                 InstType::SUB,
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
                 &Encoding::Operand(OperandEncoding::Register(reg2)),
-            ) => {
-                let from_reg = self.registers[reg1.to_idx()];
-                self.registers[reg1.to_idx()] -= self.registers[reg2.to_idx()];
-                let to_reg = self.registers[reg1.to_idx()];
-
-                register_update = Some((reg1, from_reg, to_reg));
-
-                self.update_flags(from_reg, to_reg);
-                self.update_sub_flags(from_reg, self.registers[reg2.to_idx()]);
-            }
+            ) => self.store_sub(reg1, self.registers.load(reg2)),
             (
                 InstType::SUB,
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
                 &Encoding::Operand(OperandEncoding::Immediate(val)),
-            ) => {
-                let from_reg = self.registers[reg1.to_idx()];
-                self.registers[reg1.to_idx()] -= val;
-                let to_reg = self.registers[reg1.to_idx()];
-
-                register_update = Some((reg1, from_reg, to_reg));
-
-                self.update_flags(from_reg, to_reg);
-                self.update_sub_flags(from_reg, val);
-            }
+            ) => self.store_sub(reg1, val),
             (
                 InstType::CMP,
-                Encoding::Operand(OperandEncoding::Register(reg1)),
-                Encoding::Operand(OperandEncoding::Register(reg2)),
+                &Encoding::Operand(OperandEncoding::Register(reg1)),
+                &Encoding::Operand(OperandEncoding::Register(reg2)),
             ) => {
-                let from_reg = self.registers[reg1.to_idx()];
-                let to_reg = self.registers[reg1.to_idx()] - self.registers[reg2.to_idx()];
+                let from_reg = self.registers.load(reg1);
+                let to_reg = self.registers.load(reg1) - self.registers.load(reg2);
                 self.update_flags(from_reg, to_reg);
+                self.update_sub_flags(from_reg, self.registers.load(reg2))
             }
             (
                 InstType::JNZ,
@@ -272,12 +251,89 @@ impl Processor {
             flag_update = Some((from_flags, self.flags));
         }
 
+        let register_update = [
+            Register::AX,
+            Register::BX,
+            Register::CX,
+            Register::DX,
+            Register::SP,
+            Register::BP,
+            Register::SI,
+            Register::DI,
+        ]
+        .into_iter()
+        .find_map(|reg| {
+            let to = self.registers.load(reg);
+            let from = from_registers.load(reg);
+            if to != from {
+                Some((reg, from, to))
+            } else {
+                None
+            }
+        });
+
         Some(Step {
             inst,
             ip: (from_ip, self.ip),
             flags: flag_update,
             register: register_update,
         })
+    }
+
+    fn translate_effective_address(&self, ea: EffectiveAddress) -> u16 {
+        let address = ea.disp
+            + match ea.register {
+                RegisterAddress::BXSI => {
+                    self.registers.load(Register::BX) + self.registers.load(Register::SI)
+                }
+                RegisterAddress::BXDI => {
+                    self.registers.load(Register::BX) + self.registers.load(Register::DI)
+                }
+                RegisterAddress::BPSI => {
+                    self.registers.load(Register::BP) + self.registers.load(Register::SI)
+                }
+                RegisterAddress::BPDI => {
+                    self.registers.load(Register::BP) + self.registers.load(Register::DI)
+                }
+                RegisterAddress::SI => self.registers.load(Register::SI),
+                RegisterAddress::DI => self.registers.load(Register::DI),
+                RegisterAddress::BX => self.registers.load(Register::BX),
+                RegisterAddress::DirectBP => unimplemented!(),
+            };
+        address as u16
+    }
+
+    fn store_register(&mut self, reg: Register, val: i16) {
+        self.registers = self.registers.store(reg, val);
+    }
+
+    fn store_memory(&mut self, address: u16, val: i16) {
+        self.memory[address as usize] = (val as u16 & 0xFF) as u8;
+        self.memory[address as usize + 1] = ((val as u16 >> 8) & 0xFF) as u8;
+    }
+
+    fn load_memory(&self, address: u16) -> i16 {
+        let val = ((self.memory[address as usize + 1] as u16) << 8)
+            | (self.memory[address as usize] as u16);
+        val as i16
+    }
+
+    fn store_add(&mut self, reg: Register, val: i16) {
+        let from_reg = self.registers.load(reg);
+        self.store_register(reg, from_reg + val);
+        let to_reg = self.registers.load(reg);
+
+        self.update_flags(from_reg, to_reg);
+        self.update_add_flags(from_reg, val);
+    }
+
+    fn store_sub(&mut self, reg: Register, val: i16) {
+        let from_reg = self.registers.load(reg);
+        self.store_register(reg, self.registers.load(reg) - val);
+        let to_reg = self.registers.load(reg);
+
+        self.update_flags(from_reg, to_reg);
+        self.update_sub_flags(from_reg, val);
     }
 
     fn update_flags(&mut self, from_val: i16, to_val: i16) {
@@ -379,8 +435,8 @@ impl Tracer {
             write_trace(format!(
                 "{:>8}: {:#06x} ({})\n",
                 reg.to_string(),
-                processor.register_value(reg) as u16,
-                processor.register_value(reg) as u16,
+                processor.registers.load(reg) as u16,
+                processor.registers.load(reg) as u16,
             ));
         }
 

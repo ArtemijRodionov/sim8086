@@ -471,7 +471,6 @@ impl MA {
 
         let op_code = MAOpCode::from(self.0[0]).unwrap();
         let src = if matches!(op_code, MAOpCode::Mov) {
-            // TODO size
             let mut src = Encoding::Memory(
                 MemoryEncoding::Memory(src_val as u16),
                 OperandSize::Word,
