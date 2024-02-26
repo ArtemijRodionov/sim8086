@@ -3,7 +3,6 @@ use crate::ast::{
     Register, RegisterAddress,
 };
 use std::collections::{HashMap, HashSet};
-use std::fmt::Write;
 
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, PartialOrd, Ord)]
 struct Registers(u128);
@@ -150,6 +149,10 @@ impl Processor {
         }
     }
 
+    fn run(&mut self) {
+        while let Some(_) = self.step() {}
+    }
+
     fn step(&mut self) -> Option<Step> {
         let inst = self.code.get_inst(self.ip as usize)?;
         let from_ip = self.ip;
@@ -166,26 +169,27 @@ impl Processor {
             }
             (
                 InstType::MOV,
-                &Encoding::Memory(MemoryEncoding::Memory(address), OperandSize::Word, _),
+                &Encoding::Memory(MemoryEncoding::Memory(address), size, _),
                 &Encoding::Operand(OperandEncoding::Immediate(val)),
-            ) => self.store_memory(address, val),
+            ) => self.store_memory(address, val, size),
             (
                 InstType::MOV,
-                &Encoding::Memory(MemoryEncoding::EffectiveAddress(ea), OperandSize::Word, _),
+                &Encoding::Memory(MemoryEncoding::EffectiveAddress(ea), size, _),
                 &Encoding::Operand(OperandEncoding::Immediate(val)),
-            ) => self.store_memory(self.translate_effective_address(ea), val),
+            ) => self.store_memory(self.translate_effective_address(ea), val, size),
             (
                 InstType::MOV,
-                &Encoding::Memory(MemoryEncoding::Memory(address), OperandSize::Word, _),
+                &Encoding::Memory(MemoryEncoding::Memory(address), size, _),
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
-            ) => self.store_memory(address, self.registers.load(reg1)),
+            ) => self.store_memory(address, self.registers.load(reg1), size),
             (
                 InstType::MOV,
-                &Encoding::Memory(MemoryEncoding::EffectiveAddress(ea), OperandSize::Word, _),
+                &Encoding::Memory(MemoryEncoding::EffectiveAddress(ea), size, _),
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
             ) => self.store_memory(
                 self.translate_effective_address(ea),
                 self.registers.load(reg1),
+                size,
             ),
             (
                 InstType::MOV,
@@ -195,13 +199,16 @@ impl Processor {
             (
                 InstType::MOV,
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
-                &Encoding::Memory(MemoryEncoding::Memory(address), OperandSize::Word, _),
-            ) => self.store_register(reg1, self.load_memory(address)),
+                &Encoding::Memory(MemoryEncoding::Memory(address), size, _),
+            ) => self.store_register(reg1, self.load_memory(address, size)),
             (
                 InstType::MOV,
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
-                &Encoding::Memory(MemoryEncoding::EffectiveAddress(ea), OperandSize::Word, _),
-            ) => self.store_register(reg1, self.load_memory(self.translate_effective_address(ea))),
+                &Encoding::Memory(MemoryEncoding::EffectiveAddress(ea), size, _),
+            ) => self.store_register(
+                reg1,
+                self.load_memory(self.translate_effective_address(ea), size),
+            ),
             (
                 InstType::ADD,
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
@@ -212,6 +219,14 @@ impl Processor {
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
                 &Encoding::Operand(OperandEncoding::Register(reg2)),
             ) => self.store_add(reg1, self.registers.load(reg2)),
+            (
+                InstType::ADD,
+                &Encoding::Operand(OperandEncoding::Register(reg1)),
+                &Encoding::Memory(MemoryEncoding::EffectiveAddress(ea), size, _),
+            ) => self.store_add(
+                reg1,
+                self.load_memory(self.translate_effective_address(ea), size),
+            ),
             (
                 InstType::SUB,
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
@@ -233,6 +248,16 @@ impl Processor {
                 self.update_sub_flags(from_reg, self.registers.load(reg2))
             }
             (
+                InstType::CMP,
+                &Encoding::Operand(OperandEncoding::Register(reg1)),
+                &Encoding::Operand(OperandEncoding::Immediate(val)),
+            ) => {
+                let from_reg = self.registers.load(reg1);
+                let to_reg = self.registers.load(reg1) - val;
+                self.update_flags(from_reg, to_reg);
+                self.update_sub_flags(from_reg, val)
+            }
+            (
                 InstType::JNZ,
                 &Encoding::Operand(OperandEncoding::Jmp(offset, _)),
                 Encoding::Empty,
@@ -241,7 +266,9 @@ impl Processor {
                     self.ip = (self.ip as i16 + offset as i16) as u16;
                 }
             }
-            _ => {}
+            _ => {
+                unimplemented!("unimplemented instruction {:?}", inst);
+            }
         };
 
         self.ip += inst.length as u16;
@@ -298,7 +325,7 @@ impl Processor {
                 RegisterAddress::SI => self.registers.load(Register::SI),
                 RegisterAddress::DI => self.registers.load(Register::DI),
                 RegisterAddress::BX => self.registers.load(Register::BX),
-                RegisterAddress::DirectBP => unimplemented!(),
+                RegisterAddress::DirectBP => self.registers.load(Register::BP),
             };
         address as u16
     }
@@ -307,14 +334,18 @@ impl Processor {
         self.registers = self.registers.store(reg, val);
     }
 
-    fn store_memory(&mut self, address: u16, val: i16) {
+    fn store_memory(&mut self, address: u16, val: i16, size: OperandSize) {
         self.memory[address as usize] = (val as u16 & 0xFF) as u8;
-        self.memory[address as usize + 1] = ((val as u16 >> 8) & 0xFF) as u8;
+        if let OperandSize::Word = size {
+            self.memory[address as usize + 1] = ((val as u16 >> 8) & 0xFF) as u8;
+        };
     }
 
-    fn load_memory(&self, address: u16) -> i16 {
-        let val = ((self.memory[address as usize + 1] as u16) << 8)
-            | (self.memory[address as usize] as u16);
+    fn load_memory(&self, address: u16, size: OperandSize) -> i16 {
+        let mut val = self.memory[address as usize] as u16;
+        if let OperandSize::Word = size {
+            val |= (self.memory[address as usize + 1] as u16) << 8;
+        };
         val as i16
     }
 
@@ -374,12 +405,14 @@ impl Processor {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct TracerOptions {
     pub with_ip: bool,
+    pub with_print: bool,
+    pub dump_path: String,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Tracer {
     opt: TracerOptions,
     registers: HashSet<Register>,
@@ -389,24 +422,34 @@ impl Tracer {
     pub fn with_options(opt: TracerOptions) -> Self {
         Self {
             opt,
-            ..Tracer::default()
+            ..Default::default()
         }
     }
 
     pub fn run(&mut self, processor: &mut Processor) {
-        while let Some(step) = processor.step() {
-            self.trace(step);
+        if self.opt.with_print {
+            while let Some(step) = processor.step() {
+                self.trace(step);
+            }
+            self.print(processor);
+        } else {
+            processor.run();
         }
-        self.state(processor);
+
+        if self.opt.dump_path != "" {
+            self.dump(processor);
+        }
     }
 
     fn trace(&mut self, step: Step) {
-        let mut trace = step.inst.to_string();
-        let mut write_trace = |msg| write!(trace, "{}", msg).unwrap();
+        use std::io::Write;
+        let mut sink = std::io::stdout();
+        let mut write_trace = |msg| write!(sink, "{}", msg).unwrap();
         let fmt_flags = |from, to| format!(" flags:{}->{}", from, to);
         let fmt_reg = |reg, from, to| format!(" {}:{:#x}->{:#x}", reg, from, to);
         let fmt_ip = |from, to| format!(" ip:{:#x}->{:#x}", from, to);
 
+        write_trace(step.inst.to_string());
         write_trace(" ;".to_string());
         match step.register {
             Some((reg, from, to)) if from != to => {
@@ -421,22 +464,24 @@ impl Tracer {
         if let Some((from, to)) = step.flags {
             write_trace(fmt_flags(from, to));
         }
-
-        println!("{}", trace);
+        write_trace("\n".to_string());
     }
 
-    fn state(&mut self, processor: &Processor) {
+    fn print(&mut self, processor: &Processor) {
         let mut registers = self.registers.iter().map(|x| *x).collect::<Vec<Register>>();
         registers.sort();
 
-        let mut trace = "Final registers:\n".to_string();
-        let mut write_trace = |msg| write!(trace, "{}", msg).unwrap();
+        use std::io::Write;
+        let mut sink = std::io::stdout();
+        let mut write_trace = |msg| write!(sink, "{}", msg).unwrap();
+        write_trace("Final registers:\n".to_string());
         for reg in registers {
+            let val = processor.registers.load(reg);
             write_trace(format!(
                 "{:>8}: {:#06x} ({})\n",
                 reg.to_string(),
-                processor.registers.load(reg) as u16,
-                processor.registers.load(reg) as u16,
+                val as u16,
+                val as u16,
             ));
         }
 
@@ -451,6 +496,14 @@ impl Tracer {
             write_trace(format!("   flags: {}", processor.flags));
         }
 
-        print!("{}", trace);
+        write_trace("\n".to_string());
+    }
+
+    fn dump(&mut self, processor: &Processor) {
+        use std::io::Write;
+        let mut sink =
+            std::fs::File::create(self.opt.dump_path.clone()).expect("can't create file");
+        sink.write_all(processor.memory.as_ref())
+            .expect("can't dump");
     }
 }

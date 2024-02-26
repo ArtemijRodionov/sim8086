@@ -4,9 +4,10 @@ import glob
 import difflib
 import subprocess
 
-default_decode_src = [37, 38, 39, 40, 41]
 default_exec_src = [43, 44, 46]
-default_exec_ip_src = [48, 49, 51, 52]
+default_exec_ip_src = [48, 49, 51, 52, 53]
+default_exec_dump_src = [54]
+default_decode_src = [37, 38, 39, 40, 41] + default_exec_src + default_exec_ip_src + default_exec_dump_src
 
 
 def green(msg):
@@ -26,7 +27,7 @@ def color_diff(line):
 
 
 def lines(xs):
-    return [x.rstrip() for x in xs.splitlines()]
+    return [x.strip() for x in xs.splitlines()]
 
 
 def diff(a, b):
@@ -41,11 +42,11 @@ def read(path):
         return f.read().strip()
 
 
-def clean_src(xs):
+def clean_src(xs, keep_comments=True):
     return "\n".join([
-        x for x in xs.splitlines()
-        if x
-            and not x.startswith(';')
+        x if keep_comments else x.split(';')[0].strip() for x in xs.splitlines()
+        if x.strip()
+            and not x.strip().startswith(';')
             and not x.startswith("bits")
             and not x.startswith("---")
     ])
@@ -54,7 +55,10 @@ def clean_src(xs):
 @dataclass
 class TestOptions:
     exec: bool = False
+    print: bool = True
+    dump: str = ""
     ip: bool = False
+    keep_comments: bool = False
 
 
 def run_decode(obj_path, options: TestOptions):
@@ -63,6 +67,10 @@ def run_decode(obj_path, options: TestOptions):
         args.append("--exec")
     if options.ip:
         args.append("--ip")
+    if options.print:
+        args.append("--print")
+    if options.dump:
+        args.extend(["--dump", options.dump])
     result = subprocess.run(args, capture_output=True)
     if result.returncode != 0:
         raise Exception(result.stderr.decode().strip())
@@ -70,7 +78,7 @@ def run_decode(obj_path, options: TestOptions):
 
 
 def test(src, obj, options=TestOptions()):
-    s = clean_src(read(src))
+    s = clean_src(read(src), options.keep_comments)
     o = run_decode(obj, options)
     d = diff(s, o)
     if d:
@@ -119,8 +127,9 @@ def test_machine(number, options):
 
 
 def main():
-    exec_opt = TestOptions(exec=True)
-    exec_ip_opt = TestOptions(exec=True, ip=True)
+    exec_opt = TestOptions(exec=True, keep_comments=True)
+    exec_ip_opt = TestOptions(exec=True, ip=True, keep_comments=True)
+    exec_dump_opt = TestOptions(exec=True, print=True, dump='image.data')
     number_to_test = None
     if len(sys.argv) == 2:
         number_to_test = int(sys.argv[1])
@@ -132,6 +141,8 @@ def main():
             test_machine(number_to_test, exec_opt)
         elif number_to_test in default_exec_ip_src:
             test_machine(number_to_test, exec_ip_opt)
+        elif number_to_test in default_exec_dump_src:
+            test_machine(number_to_test, exec_dump_opt)
         else:
             raise ValueError("Don't know such a test", number_to_test)
         return
@@ -144,6 +155,9 @@ def main():
 
     for s in default_exec_ip_src:
         test_machine(s, exec_ip_opt)
+
+    for s in default_exec_dump_src:
+        test_machine(s, exec_dump_opt)
 
 if __name__ == "__main__":
     main()
