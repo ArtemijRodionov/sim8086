@@ -129,7 +129,7 @@ def test_machine(number, options):
 def main():
     exec_opt = TestOptions(exec=True, keep_comments=True)
     exec_ip_opt = TestOptions(exec=True, ip=True, keep_comments=True)
-    exec_dump_opt = TestOptions(exec=True, print=True, dump='image.data')
+    exec_dump_opt = TestOptions(exec=True, ip=True, keep_comments=True, dump='image.data')
     number_to_test = None
     if len(sys.argv) == 2:
         number_to_test = int(sys.argv[1])
