@@ -4,10 +4,10 @@ import glob
 import difflib
 import subprocess
 
+default_decode_src = [37, 38, 39, 40, 41]
 default_exec_src = [43, 44, 46]
 default_exec_ip_src = [48, 49, 51, 52, 53]
-default_exec_dump_src = [54]
-default_decode_src = [37, 38, 39, 40, 41] + default_exec_src + default_exec_ip_src + default_exec_dump_src
+default_exec_dump_src = [54, 55]
 
 
 def green(msg):
@@ -151,12 +151,15 @@ def main():
         test_decode(s)
 
     for s in default_exec_src:
+        test_decode(s)
         test_machine(s, exec_opt)
 
     for s in default_exec_ip_src:
+        test_decode(s)
         test_machine(s, exec_ip_opt)
 
     for s in default_exec_dump_src:
+        test_decode(s)
         test_machine(s, exec_dump_opt)
 
 if __name__ == "__main__":

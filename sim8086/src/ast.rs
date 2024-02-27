@@ -30,6 +30,15 @@ pub(crate) enum OperandSize {
     Word,
 }
 
+impl OperandSize {
+    pub(crate) fn size(self) -> u8 {
+        match self {
+            Self::Byte => 8,
+            Self::Word => 16,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Ord, Eq, Hash)]
 pub enum Register {
     AX,
@@ -104,7 +113,15 @@ impl Register {
             Self::BP => 5,
             Self::SI => 6,
             Self::DI => 7,
-            _ => unimplemented!(),
+
+            Self::AH => 0,
+            Self::AL => 1,
+            Self::BH => 2,
+            Self::BL => 3,
+            Self::CH => 4,
+            Self::CL => 5,
+            Self::DH => 6,
+            Self::DL => 7,
         }
     }
 }

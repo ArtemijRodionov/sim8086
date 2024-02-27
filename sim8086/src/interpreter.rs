@@ -8,14 +8,19 @@ use std::collections::{HashMap, HashSet};
 struct Registers(u128);
 impl Registers {
     fn load(self, reg: Register) -> i16 {
-        ((self.0 >> (16 * reg.to_idx())) & 0xFFFF) as i16
+        let reg_size = reg.size().size();
+        let reg_idx = reg.to_idx() as u8;
+        let reg_mask = (1 << reg_size) - 1;
+        ((self.0 >> (reg_size * reg_idx)) & reg_mask) as i16
     }
     fn store(self, reg: Register, val: i16) -> Registers {
-        let idx = reg.to_idx();
         let val = (val as u16) as u128;
-        let left = self.0 & (((1 << ((7 - idx) * 16)) - 1) << ((idx + 1) * 16));
-        let mid = val << (idx * 16);
-        let right = self.0 & ((1 << (idx * 16)) - 1);
+        let reg_size = reg.size().size();
+        let reg_idx = reg.to_idx() as u8;
+
+        let left = self.0 & (((1 << ((7 - reg_idx) * reg_size)) - 1) << ((reg_idx + 1) * reg_size));
+        let mid = val << (reg_idx * reg_size);
+        let right = self.0 & ((1 << (reg_idx * reg_size)) - 1);
         Self(left | mid | right)
     }
 }
@@ -130,8 +135,6 @@ struct Step {
 
 #[derive(Debug, Default)]
 pub struct Processor {
-    // I didn't bother with cascade behavior of registers,
-    // so only 16-bit registers are supported
     ip: u16,
     flags: Flags,
     registers: Registers,
@@ -263,6 +266,17 @@ impl Processor {
                 Encoding::Empty,
             ) => {
                 if !self.flags.is_zf() {
+                    self.ip = (self.ip as i16 + offset as i16) as u16;
+                }
+            }
+            (
+                InstType::LOOP,
+                &Encoding::Operand(OperandEncoding::Jmp(offset, _)),
+                Encoding::Empty,
+            ) => {
+                let new_cx = self.registers.load(Register::CX) - 1;
+                self.store_register(Register::CX, new_cx);
+                if new_cx != 0 {
                     self.ip = (self.ip as i16 + offset as i16) as u16;
                 }
             }

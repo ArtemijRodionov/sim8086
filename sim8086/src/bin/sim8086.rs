@@ -26,9 +26,6 @@ fn main() {
         })
         .expect("Provide unix path to 8086 binary file");
 
-    let data = std::fs::read(&options.asm_path).expect("Can't open given file");
-    let asm_ops = sim8086::decoder::parse(data.into_iter());
-
     if options.flags.is_empty() || options.flags.contains("help") {
         println!(
             r#"
@@ -45,6 +42,8 @@ Flags:
 "#
         )
     } else if options.flags.contains("exec") {
+        let data = std::fs::read(&options.asm_path).expect("Can't open given file");
+        let asm_ops = sim8086::decoder::parse(data.into_iter());
         let asm_ops: sim8086::interpreter::Code = asm_ops
             .into_iter()
             .filter(|x| x.is_ok())
@@ -63,6 +62,8 @@ Flags:
 
         tracer.run(&mut processor);
     } else {
+        let data = std::fs::read(&options.asm_path).expect("Can't open given file");
+        let asm_ops = sim8086::decoder::parse(data.into_iter());
         for inst in asm_ops {
             match inst.and_then(|x| Ok(x.decode())) {
                 Ok(op) => println!("{}", op.to_string()),
