@@ -6,8 +6,7 @@ import subprocess
 
 default_decode_src = [37, 38, 39, 40, 41]
 default_exec_src = [43, 44, 46]
-default_exec_ip_src = [48, 49, 51, 52, 53]
-default_exec_dump_src = [54, 55]
+default_exec_ip_src = [48, 49, 51, 52, 53, 54, 55]
 
 
 def green(msg):
@@ -129,7 +128,6 @@ def test_machine(number, options):
 def main():
     exec_opt = TestOptions(exec=True, keep_comments=True)
     exec_ip_opt = TestOptions(exec=True, ip=True, keep_comments=True)
-    exec_dump_opt = TestOptions(exec=True, ip=True, keep_comments=True, dump='image.data')
     number_to_test = None
     if len(sys.argv) == 2:
         number_to_test = int(sys.argv[1])
@@ -141,8 +139,6 @@ def main():
             test_machine(number_to_test, exec_opt)
         elif number_to_test in default_exec_ip_src:
             test_machine(number_to_test, exec_ip_opt)
-        elif number_to_test in default_exec_dump_src:
-            test_machine(number_to_test, exec_dump_opt)
         else:
             raise ValueError("Don't know such a test", number_to_test)
         return
@@ -157,10 +153,6 @@ def main():
     for s in default_exec_ip_src:
         test_decode(s)
         test_machine(s, exec_ip_opt)
-
-    for s in default_exec_dump_src:
-        test_decode(s)
-        test_machine(s, exec_dump_opt)
 
 if __name__ == "__main__":
     main()
