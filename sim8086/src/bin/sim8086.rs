@@ -34,10 +34,10 @@ Decoder and interpreter for 8086 assembler
 Usage: sim8086 [--flags] [compiled assembly file]
 Flags:
     --help  prints help
-    --print prints human-readable result
-        --ip prints ip changes during printing
-
+    --print prints human-readable result. Without this flag there won't be console prints
     --exec  interpretes a decoded assembly file. Without this flag will only decode an assembly file.
+        --ip prints ip changes during printing 
+        --estimate prints opcodes estimate during printing
         --dump [file] offload memory after execution to a given file
 "#
         )
@@ -56,6 +56,7 @@ Flags:
             sim8086::interpreter::Tracer::with_options(sim8086::interpreter::TracerOptions {
                 with_ip: options.flags.contains("ip"),
                 with_print: options.flags.contains("print"),
+                with_estimate: options.flags.contains("estimate"),
                 dump_path: options.dump_path,
                 ..sim8086::interpreter::TracerOptions::default()
             });

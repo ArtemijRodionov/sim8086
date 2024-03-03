@@ -125,12 +125,19 @@ impl FromIterator<crate::decoder::Asm> for Code {
     }
 }
 
+#[derive(Debug, Default)]
+struct Clock {
+    value: u8,
+    ea: u8,
+}
+
 #[derive(Debug)]
 struct Step {
     inst: Inst,
     ip: (u16, u16),
     register: Option<(Register, i16, i16)>,
     flags: Option<(Flags, Flags)>,
+    clock: Clock,
 }
 
 #[derive(Debug, Default)]
@@ -161,6 +168,8 @@ impl Processor {
         let from_ip = self.ip;
         let from_flags = self.flags;
         let from_registers = self.registers;
+        let mut clock = 0;
+        let mut clock_ea = 0;
 
         match (&inst.t, &inst.lhs, &inst.rhs) {
             (
@@ -169,6 +178,7 @@ impl Processor {
                 &Encoding::Operand(OperandEncoding::Immediate(val)),
             ) => {
                 self.store_register(reg1, val);
+                clock = 4;
             }
             (
                 InstType::MOV,
@@ -198,20 +208,36 @@ impl Processor {
                 InstType::MOV,
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
                 &Encoding::Operand(OperandEncoding::Register(reg2)),
-            ) => self.store_register(reg1, self.load_register(reg2)),
+            ) => {
+                self.store_register(reg1, self.load_register(reg2));
+                clock = 2;
+            }
             (
                 InstType::MOV,
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
                 &Encoding::Memory(MemoryEncoding::Memory(address), size, _),
-            ) => self.store_register(reg1, self.load_memory(address, size)),
+            ) => {
+                self.store_register(reg1, self.load_memory(address, size));
+                clock = 8;
+                clock_ea = 6;
+            }
             (
                 InstType::MOV,
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
                 &Encoding::Memory(MemoryEncoding::EffectiveAddress(ea), size, _),
-            ) => self.store_register(
-                reg1,
-                self.load_memory(self.translate_effective_address(ea), size),
-            ),
+            ) => {
+                self.store_register(
+                    reg1,
+                    self.load_memory(self.translate_effective_address(ea), size),
+                );
+                clock = 8;
+                if ea.disp != 0 {
+                    clock_ea += 6;
+                }
+                if ea.disp != 0 {
+                    clock_ea += 6;
+                }
+            }
             (
                 InstType::ADD,
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
@@ -326,6 +352,10 @@ impl Processor {
             ip: (from_ip, self.ip),
             flags: flag_update,
             register: register_update,
+            clock: Clock {
+                value: clock,
+                ea: clock_ea,
+            },
         })
     }
 
@@ -446,6 +476,7 @@ impl Processor {
 pub struct TracerOptions {
     pub with_ip: bool,
     pub with_print: bool,
+    pub with_estimate: bool,
     pub dump_path: String,
 }
 
@@ -453,6 +484,7 @@ pub struct TracerOptions {
 pub struct Tracer {
     opt: TracerOptions,
     registers: HashSet<Register>,
+    clocks: u32,
 }
 
 impl Tracer {
@@ -485,9 +517,21 @@ impl Tracer {
         let fmt_flags = |from, to| format!(" flags:{}->{}", from, to);
         let fmt_reg = |reg, from, to| format!(" {}:{:#x}->{:#x}", reg, from, to);
         let fmt_ip = |from, to| format!(" ip:{:#x}->{:#x}", from, to);
+        let mut fmt_clock = |clock: Clock| {
+            let inc = clock.value + clock.ea;
+            self.clocks += inc as u32;
+            let mut fmt = format!(" Clocks: +{} = {}", inc, self.clocks);
+            if clock.ea != 0 {
+                fmt = format!("{} ({} + {}ea)", fmt, clock.value, clock.ea);
+            }
+            format!("{} |", fmt)
+        };
 
         write_trace(step.inst.to_string());
         write_trace(" ;".to_string());
+        if self.opt.with_estimate {
+            write_trace(fmt_clock(step.clock));
+        }
         match step.register {
             Some((reg, from, to)) if from != to => {
                 self.registers.insert(reg);

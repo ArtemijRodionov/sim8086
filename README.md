@@ -35,3 +35,7 @@ https://www.computerenhance.com/p/table-of-contents
 
 10. https://www.computerenhance.com/p/simulating-real-programs
     * listing 54, 55
+
+11. https://www.computerenhance.com/p/estimating-cycles
+    * p. 65 in manual
+    * listings 56, 57
