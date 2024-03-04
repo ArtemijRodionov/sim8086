@@ -168,8 +168,11 @@ impl EffectiveAddress {
 
 #[derive(Debug, Clone)]
 pub(crate) enum OperandEncoding {
+    // TODO remove two Accumulators in favor of Accumulator + OperandSize
     Accumulator8,
     Accumulator16,
+    // TODO I don't like strings in ast, but it was fast to implement
+    // Remove strings and move Display logic to decoder
     Jmp(i8, String),
     Immediate(i16),
     Register(Register),
@@ -177,6 +180,7 @@ pub(crate) enum OperandEncoding {
 
 #[derive(Debug, Clone)]
 pub enum MemoryEncoding {
+    // TODO remove Memory in favor of displacement-only EffectiveAddress
     Memory(u16),
     EffectiveAddress(EffectiveAddress),
 }
@@ -194,6 +198,9 @@ impl MemoryEncoding {
 pub(crate) enum Encoding {
     Empty,
     Operand(OperandEncoding),
+    // TODO OperandType is surplus, because it can be infered from operand types
+    // If there is a register operand then it's explicit.
+    // TODO OperandType can be safely removed in favor of using only explicit size identifiers
     Memory(MemoryEncoding, OperandSize, OperandType),
 }
 

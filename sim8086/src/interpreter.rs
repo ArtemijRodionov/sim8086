@@ -125,9 +125,33 @@ impl FromIterator<crate::decoder::Asm> for Code {
     }
 }
 
+fn estimate_ea(ea: EffectiveAddress) -> u8 {
+    match (ea.register, ea.disp) {
+        (
+            RegisterAddress::BX
+            | RegisterAddress::DirectBP
+            | RegisterAddress::SI
+            | RegisterAddress::DI,
+            0,
+        ) => 5,
+        (
+            RegisterAddress::BX
+            | RegisterAddress::DirectBP
+            | RegisterAddress::SI
+            | RegisterAddress::DI,
+            _,
+        ) => 9,
+        (RegisterAddress::BPDI | RegisterAddress::BXSI, 0) => 7,
+        (RegisterAddress::BPSI | RegisterAddress::BXDI, 0) => 8,
+        (RegisterAddress::BPDI | RegisterAddress::BXSI, _) => 11,
+        (RegisterAddress::BPSI | RegisterAddress::BXDI, _) => 12,
+    }
+}
+
 #[derive(Debug, Default)]
 struct Clock {
     value: u8,
+    transfer: u8,
     ea: u8,
 }
 
@@ -170,6 +194,7 @@ impl Processor {
         let from_registers = self.registers;
         let mut clock = 0;
         let mut clock_ea = 0;
+        let mut clock_transfer = 0;
 
         match (&inst.t, &inst.lhs, &inst.rhs) {
             (
@@ -199,11 +224,15 @@ impl Processor {
                 InstType::MOV,
                 &Encoding::Memory(MemoryEncoding::EffectiveAddress(ea), size, _),
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
-            ) => self.store_memory(
-                self.translate_effective_address(ea),
-                self.load_register(reg1),
-                size,
-            ),
+            ) => {
+                self.store_memory(
+                    self.translate_effective_address(ea),
+                    self.load_register(reg1),
+                    size,
+                );
+                clock = 9;
+                clock_ea = estimate_ea(ea);
+            }
             (
                 InstType::MOV,
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
@@ -231,36 +260,60 @@ impl Processor {
                     self.load_memory(self.translate_effective_address(ea), size),
                 );
                 clock = 8;
-                if ea.disp != 0 {
-                    clock_ea += 6;
-                }
-                if ea.disp != 0 {
-                    clock_ea += 6;
-                }
+                clock_ea = estimate_ea(ea);
             }
             (
                 InstType::ADD,
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
                 &Encoding::Operand(OperandEncoding::Immediate(val)),
-            ) => self.store_add_register(reg1, val),
+            ) => {
+                self.store_add_register(reg1, val);
+                clock = 4;
+            }
             (
                 InstType::ADD,
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
                 &Encoding::Operand(OperandEncoding::Register(reg2)),
-            ) => self.store_add_register(reg1, self.load_register(reg2)),
+            ) => {
+                self.store_add_register(reg1, self.load_register(reg2));
+                clock = 3;
+            }
             (
                 InstType::ADD,
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
                 &Encoding::Memory(MemoryEncoding::EffectiveAddress(ea), size, _),
-            ) => self.store_add_register(
-                reg1,
-                self.load_memory(self.translate_effective_address(ea), size),
-            ),
+            ) => {
+                let address = self.translate_effective_address(ea);
+                self.store_add_register(reg1, self.load_memory(address, size));
+                clock = 9;
+                clock_ea = estimate_ea(ea);
+                if address % 2 == 1 {
+                    clock_transfer = 4 * 1;
+                }
+            }
             (
                 InstType::ADD,
                 &Encoding::Memory(MemoryEncoding::EffectiveAddress(ea), size, _),
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
-            ) => self.store_add_memory(ea, size, reg1),
+            ) => {
+                let address = self.translate_effective_address(ea);
+                self.store_add_memory(size, address, self.load_register(reg1));
+                clock = 16;
+                clock_ea = estimate_ea(ea);
+                if address % 2 == 1 {
+                    clock_transfer = 4 * 2;
+                }
+            }
+            (
+                InstType::ADD,
+                &Encoding::Memory(MemoryEncoding::EffectiveAddress(ea), size, _),
+                &Encoding::Operand(OperandEncoding::Immediate(val)),
+            ) => {
+                let address = self.translate_effective_address(ea);
+                self.store_add_memory(size, address, val);
+                clock = 17;
+                clock_ea = estimate_ea(ea)
+            }
             (
                 InstType::SUB,
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
@@ -347,6 +400,8 @@ impl Processor {
             });
         }
 
+        // TODO Step struct is a bad idea for interpretation loop,
+        // but I don't want to spend much time to do it properly
         Some(Step {
             inst,
             ip: (from_ip, self.ip),
@@ -354,6 +409,7 @@ impl Processor {
             register: register_update,
             clock: Clock {
                 value: clock,
+                transfer: clock_transfer,
                 ea: clock_ea,
             },
         })
@@ -414,10 +470,8 @@ impl Processor {
         self.update_add_flags(from_reg, val);
     }
 
-    fn store_add_memory(&mut self, ea: EffectiveAddress, size: OperandSize, reg: Register) {
-        let address = self.translate_effective_address(ea);
+    fn store_add_memory(&mut self, size: OperandSize, address: u16, val: i16) {
         let from = self.load_memory(address, size);
-        let val = self.load_register(reg);
         let to = from + val;
         self.store_memory(address, to, size);
 
@@ -518,10 +572,15 @@ impl Tracer {
         let fmt_reg = |reg, from, to| format!(" {}:{:#x}->{:#x}", reg, from, to);
         let fmt_ip = |from, to| format!(" ip:{:#x}->{:#x}", from, to);
         let mut fmt_clock = |clock: Clock| {
-            let inc = clock.value + clock.ea;
+            let inc = clock.value + clock.ea + clock.transfer;
             self.clocks += inc as u32;
             let mut fmt = format!(" Clocks: +{} = {}", inc, self.clocks);
-            if clock.ea != 0 {
+            if clock.ea != 0 && clock.transfer != 0 {
+                fmt = format!(
+                    "{} ({} + {}ea + {}p)",
+                    fmt, clock.value, clock.ea, clock.transfer
+                );
+            } else if clock.ea != 0 {
                 fmt = format!("{} ({} + {}ea)", fmt, clock.value, clock.ea);
             }
             format!("{} |", fmt)
