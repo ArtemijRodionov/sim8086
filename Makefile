@@ -1,4 +1,4 @@
-.PHONY: all test test-unit test-e2e test-e2e nasm-xxd
+.PHONY: all test test-unit test-e2e test-e2e nasm-xxd lint lint-fix
 
 SHELL=/bin/bash
 
@@ -13,6 +13,9 @@ sim8086.bin: $(files)
 test: lint test-unit test-e2e
 
 lint:
+	cd sim8086 && cargo clippy
+
+lint-fix:
 	cd sim8086 && cargo clippy --fix
 
 test-unit:

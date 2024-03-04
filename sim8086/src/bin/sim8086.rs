@@ -9,14 +9,13 @@ struct CmdOptions {
 
 fn main() {
     let options = args()
-        .into_iter()
         .skip(1)
         .try_fold(CmdOptions::default(), |mut args, s| {
             if s.starts_with("--") {
                 args.flags.insert(s.trim_start_matches("--").to_string());
-            } else if args.flags.contains("dump") && args.dump_path == "" {
+            } else if args.flags.contains("dump") && args.dump_path.is_empty() {
                 args.dump_path = s.to_string();
-            } else if args.asm_path == "" {
+            } else if args.asm_path.is_empty() {
                 args.asm_path = s.to_string();
             } else {
                 return Err("You can't have multiple paths");
@@ -46,8 +45,7 @@ Flags:
         let asm_ops = sim8086::decoder::parse(data.into_iter());
         let asm_ops: sim8086::interpreter::Code = asm_ops
             .into_iter()
-            .filter(|x| x.is_ok())
-            .map(|x| x.unwrap())
+            .filter_map(|x| x.ok())
             .collect();
 
         let mut processor = sim8086::interpreter::Processor::new(asm_ops);
@@ -66,8 +64,8 @@ Flags:
         let data = std::fs::read(&options.asm_path).expect("Can't open given file");
         let asm_ops = sim8086::decoder::parse(data.into_iter());
         for inst in asm_ops {
-            match inst.and_then(|x| Ok(x.decode())) {
-                Ok(op) => println!("{}", op.to_string()),
+            match inst.map(|x| x.decode()) {
+                Ok(op) => println!("{}", op),
                 Err(e) => println!("{}", e),
             };
         }

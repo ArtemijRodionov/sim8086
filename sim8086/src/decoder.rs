@@ -247,7 +247,7 @@ impl IRMOpCode {
         match op {
             Self::Mov => op,
             Self::TBD => {
-                if reg ^ 0b000 == 0 {
+                if reg == 0 {
                     Self::Add
                 } else if reg ^ 0b101 == 0 {
                     Self::Sub

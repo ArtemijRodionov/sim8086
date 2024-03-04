@@ -153,14 +153,14 @@ pub struct Processor {
 impl Processor {
     pub fn new(code: Code) -> Self {
         Self {
-            code: Code::from(code),
+            code,
             memory: vec![0; 1024 * 1024],
             ..Self::default()
         }
     }
 
     fn run(&mut self) {
-        while let Some(_) = self.step() {}
+        while self.step().is_some() {}
     }
 
     fn step(&mut self) -> Option<Step> {
@@ -505,7 +505,7 @@ impl Tracer {
             processor.run();
         }
 
-        if self.opt.dump_path != "" {
+        if !self.opt.dump_path.is_empty() {
             self.dump(processor);
         }
     }
@@ -549,7 +549,7 @@ impl Tracer {
     }
 
     fn print(&mut self, processor: &Processor) {
-        let mut registers = self.registers.iter().map(|x| *x).collect::<Vec<Register>>();
+        let mut registers = self.registers.iter().copied().collect::<Vec<Register>>();
         registers.sort();
 
         use std::io::Write;
