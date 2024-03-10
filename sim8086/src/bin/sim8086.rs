@@ -56,7 +56,6 @@ Flags:
                 with_print: options.flags.contains("print"),
                 with_estimate: options.flags.contains("estimate"),
                 dump_path: options.dump_path,
-                ..sim8086::interpreter::TracerOptions::default()
             });
 
         tracer.run(&mut processor);

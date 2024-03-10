@@ -128,6 +128,7 @@ impl Register {
 
 #[derive(Debug, Clone, Copy)]
 pub enum RegisterAddress {
+    Empty,
     BXSI,
     BXDI,
     BPSI,
@@ -161,37 +162,19 @@ pub struct EffectiveAddress {
 }
 
 impl EffectiveAddress {
-    fn new(register: RegisterAddress, disp: i16) -> Self {
+    pub(crate) fn new(register: RegisterAddress, disp: i16) -> Self {
         Self { register, disp }
     }
 }
 
 #[derive(Debug, Clone)]
 pub(crate) enum OperandEncoding {
-    // TODO remove two Accumulators in favor of Accumulator + OperandSize
-    Accumulator8,
-    Accumulator16,
+    Accumulator(OperandSize),
     // TODO I don't like strings in ast, but it was fast to implement
-    // Remove strings and move Display logic to decoder
-    Jmp(i8, String),
+    // Remove strings and move Display logic to decoder?
+    Jmp { offset: i8, label: String },
     Immediate(i16),
     Register(Register),
-}
-
-#[derive(Debug, Clone)]
-pub enum MemoryEncoding {
-    // TODO remove Memory in favor of displacement-only EffectiveAddress
-    Memory(u16),
-    EffectiveAddress(EffectiveAddress),
-}
-
-impl MemoryEncoding {
-    pub fn direct(direct: u16) -> Self {
-        Self::Memory(direct)
-    }
-    pub fn effective_address(address: RegisterAddress, disp: i16) -> Self {
-        Self::EffectiveAddress(EffectiveAddress::new(address, disp))
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -201,7 +184,7 @@ pub(crate) enum Encoding {
     // TODO OperandType is surplus, because it can be infered from operand types
     // If there is a register operand then it's explicit.
     // TODO OperandType can be safely removed in favor of using only explicit size identifiers
-    Memory(MemoryEncoding, OperandSize, OperandType),
+    Memory(EffectiveAddress, OperandSize, OperandType),
 }
 
 #[derive(Debug, Clone)]
@@ -256,21 +239,30 @@ impl std::fmt::Display for EffectiveAddress {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
-            "[{}{}]",
-            match self.register {
-                RegisterAddress::BXSI => "bx + si",
-                RegisterAddress::BXDI => "bx + di",
-                RegisterAddress::BPSI => "bp + si",
-                RegisterAddress::BPDI => "bp + di",
-                RegisterAddress::SI => "si",
-                RegisterAddress::DI => "di",
-                RegisterAddress::BX => "bx",
-                RegisterAddress::DirectBP => "bp",
-            },
-            match self.disp {
-                0 => "".to_string(),
-                1.. => format!(" + {}", self.disp),
-                _ => format!(" - {}", -self.disp),
+            "[{}]",
+            if self.disp != 0 && matches!(self.register, RegisterAddress::Empty) {
+                self.disp.to_string()
+            } else {
+                let reg = match self.register {
+                    RegisterAddress::Empty => "",
+                    RegisterAddress::BXSI => "bx + si",
+                    RegisterAddress::BXDI => "bx + di",
+                    RegisterAddress::BPSI => "bp + si",
+                    RegisterAddress::BPDI => "bp + di",
+                    RegisterAddress::SI => "si",
+                    RegisterAddress::DI => "di",
+                    RegisterAddress::BX => "bx",
+                    RegisterAddress::DirectBP => "bp",
+                };
+                if self.disp == 0 {
+                    reg.to_string()
+                } else {
+                    let sign = match self.disp {
+                        1.. => "+",
+                        _ => "-",
+                    };
+                    format!("{} {} {}", reg, sign, self.disp.abs())
+                }
             }
         )
     }
@@ -309,24 +301,11 @@ impl std::fmt::Display for OperandEncoding {
             f,
             "{}",
             match self {
-                Self::Jmp(_, s) => s.to_string(),
-                Self::Accumulator8 => "al".to_string(),
-                Self::Accumulator16 => "ax".to_string(),
+                Self::Jmp { label: s, .. } => s.to_string(),
+                Self::Accumulator(OperandSize::Byte) => "al".to_string(),
+                Self::Accumulator(OperandSize::Word) => "ax".to_string(),
                 Self::Immediate(e) => e.to_string(),
                 Self::Register(r) => r.to_string(),
-            }
-        )
-    }
-}
-
-impl std::fmt::Display for MemoryEncoding {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Self::Memory(e) => format!("[{}]", e),
-                Self::EffectiveAddress(e) => e.to_string(),
             }
         )
     }

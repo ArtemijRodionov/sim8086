@@ -1,6 +1,6 @@
 use crate::ast::{
-    EffectiveAddress, Encoding, Inst, InstType, MemoryEncoding, OperandEncoding, OperandSize,
-    Register, RegisterAddress,
+    EffectiveAddress, Encoding, Inst, InstType, OperandEncoding, OperandSize, Register,
+    RegisterAddress,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -127,6 +127,8 @@ impl FromIterator<crate::decoder::Asm> for Code {
 
 fn estimate_ea(ea: EffectiveAddress) -> u8 {
     match (ea.register, ea.disp) {
+        (RegisterAddress::Empty, 0) => 0,
+        (RegisterAddress::Empty, _) => 6,
         (
             RegisterAddress::BX
             | RegisterAddress::DirectBP
@@ -207,22 +209,12 @@ impl Processor {
             }
             (
                 InstType::MOV,
-                &Encoding::Memory(MemoryEncoding::Memory(address), size, _),
-                &Encoding::Operand(OperandEncoding::Immediate(val)),
-            ) => self.store_memory(address, val, size),
-            (
-                InstType::MOV,
-                &Encoding::Memory(MemoryEncoding::EffectiveAddress(ea), size, _),
+                &Encoding::Memory(ea, size, _),
                 &Encoding::Operand(OperandEncoding::Immediate(val)),
             ) => self.store_memory(self.translate_effective_address(ea), val, size),
             (
                 InstType::MOV,
-                &Encoding::Memory(MemoryEncoding::Memory(address), size, _),
-                &Encoding::Operand(OperandEncoding::Register(reg1)),
-            ) => self.store_memory(address, self.load_register(reg1), size),
-            (
-                InstType::MOV,
-                &Encoding::Memory(MemoryEncoding::EffectiveAddress(ea), size, _),
+                &Encoding::Memory(ea, size, _),
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
             ) => {
                 self.store_memory(
@@ -244,16 +236,7 @@ impl Processor {
             (
                 InstType::MOV,
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
-                &Encoding::Memory(MemoryEncoding::Memory(address), size, _),
-            ) => {
-                self.store_register(reg1, self.load_memory(address, size));
-                clock = 8;
-                clock_ea = 6;
-            }
-            (
-                InstType::MOV,
-                &Encoding::Operand(OperandEncoding::Register(reg1)),
-                &Encoding::Memory(MemoryEncoding::EffectiveAddress(ea), size, _),
+                &Encoding::Memory(ea, size, _),
             ) => {
                 self.store_register(
                     reg1,
@@ -281,19 +264,19 @@ impl Processor {
             (
                 InstType::ADD,
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
-                &Encoding::Memory(MemoryEncoding::EffectiveAddress(ea), size, _),
+                &Encoding::Memory(ea, size, _),
             ) => {
                 let address = self.translate_effective_address(ea);
                 self.store_add_register(reg1, self.load_memory(address, size));
                 clock = 9;
                 clock_ea = estimate_ea(ea);
                 if address % 2 == 1 {
-                    clock_transfer = 4 * 1;
+                    clock_transfer = 4;
                 }
             }
             (
                 InstType::ADD,
-                &Encoding::Memory(MemoryEncoding::EffectiveAddress(ea), size, _),
+                &Encoding::Memory(ea, size, _),
                 &Encoding::Operand(OperandEncoding::Register(reg1)),
             ) => {
                 let address = self.translate_effective_address(ea);
@@ -306,7 +289,7 @@ impl Processor {
             }
             (
                 InstType::ADD,
-                &Encoding::Memory(MemoryEncoding::EffectiveAddress(ea), size, _),
+                &Encoding::Memory(ea, size, _),
                 &Encoding::Operand(OperandEncoding::Immediate(val)),
             ) => {
                 let address = self.translate_effective_address(ea);
@@ -346,7 +329,7 @@ impl Processor {
             }
             (
                 InstType::JNZ,
-                &Encoding::Operand(OperandEncoding::Jmp(offset, _)),
+                &Encoding::Operand(OperandEncoding::Jmp { offset, .. }),
                 Encoding::Empty,
             ) => {
                 if !self.flags.is_zf() {
@@ -355,7 +338,7 @@ impl Processor {
             }
             (
                 InstType::LOOP,
-                &Encoding::Operand(OperandEncoding::Jmp(offset, _)),
+                &Encoding::Operand(OperandEncoding::Jmp { offset, .. }),
                 Encoding::Empty,
             ) => {
                 let new_cx = self.load_register(Register::CX) - 1;
@@ -418,6 +401,7 @@ impl Processor {
     fn translate_effective_address(&self, ea: EffectiveAddress) -> u16 {
         let address = ea.disp
             + match ea.register {
+                RegisterAddress::Empty => 0,
                 RegisterAddress::BXSI => {
                     self.load_register(Register::BX) + self.load_register(Register::SI)
                 }

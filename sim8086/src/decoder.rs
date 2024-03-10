@@ -1,5 +1,5 @@
 use crate::ast::{
-    Encoding, Inst, InstType, MemoryEncoding, Mode, OperandEncoding, OperandSize, OperandType,
+    EffectiveAddress, Encoding, Inst, InstType, Mode, OperandEncoding, OperandSize, OperandType,
     Register, RegisterAddress,
 };
 use std::collections::HashMap;
@@ -20,7 +20,7 @@ fn mode_to_write(rm: u8, mode: u8) -> usize {
 }
 
 fn mode_encode(
-    data: &Vec<u8>,
+    data: &[u8],
     mode: u8,
     rm: u8,
     w: u8,
@@ -37,19 +37,20 @@ fn mode_encode(
             let address = RegisterAddress::from(rm);
             if matches!(address, RegisterAddress::DirectBP) {
                 let direct = (data[3] as u16) << 8 | (data[2] as u16);
-                MemoryEncoding::Memory(direct)
+                EffectiveAddress::new(RegisterAddress::Empty, direct as i16)
             } else {
-                MemoryEncoding::effective_address(address, 0)
+                EffectiveAddress::new(address, 0)
             }
         }
         Mode::Mem1Disp => {
             let address = RegisterAddress::from(rm);
-            MemoryEncoding::effective_address(address, (data[2] as i8) as i16)
+            let disp = (data[2] as i8) as i16;
+            EffectiveAddress::new(address, disp)
         }
         Mode::Mem2Disp => {
             let address = RegisterAddress::from(rm);
             let disp = (data[3] as i16) << 8 | (data[2] as i16);
-            MemoryEncoding::effective_address(address, disp)
+            EffectiveAddress::new(address, disp)
         }
         _ => unreachable!(),
     };
@@ -58,8 +59,8 @@ fn mode_encode(
 }
 
 #[derive(Debug)]
-struct JMP(Vec<u8>, String);
-impl JMP {
+struct JP{data: Vec<u8>, label: String}
+impl JP {
     const PREFIX: [(InstType, u8); 20] = [
         (InstType::JNZ, 0b01110101),
         (InstType::JE, 0b01110100),
@@ -100,19 +101,19 @@ impl JMP {
     fn new(op: u8) -> Self {
         let mut v = Vec::with_capacity(2);
         v.push(op);
-        Self(v, "".to_string())
+        Self{data: v, label: "".to_string()}
     }
 
     fn get_offset(&self) -> i8 {
-        self.0.len() as i8 + self.0[1] as i8
+        self.data.len() as i8 + self.data[1] as i8
     }
 
     fn set_label(&mut self, label: String) {
-        self.1 = label
+        self.label = label
     }
 
     fn len(&self) -> usize {
-        if self.0.len() == 1 {
+        if self.data.len() == 1 {
             return 1;
         }
 
@@ -120,16 +121,19 @@ impl JMP {
     }
 
     fn push(&mut self, data: u8) {
-        assert!(self.0.len() < 2);
-        self.0.push(data);
+        assert!(self.data.len() < 2);
+        self.data.push(data);
     }
 
     fn decode(&self) -> Inst {
         let src = Encoding::Empty;
-        let dst = Encoding::Operand(OperandEncoding::Jmp(self.0[1] as i8, self.1.to_string()));
+        let dst = Encoding::Operand(OperandEncoding::Jmp {
+            offset: self.data[1] as i8,
+            label: self.label.to_string(),
+        });
 
-        let name = Self::inst_type(self.0[0]).unwrap();
-        Inst::new(name, dst, src, self.0.len())
+        let name = Self::inst_type(self.data[0]).unwrap();
+        Inst::new(name, dst, src, self.data.len())
     }
 }
 
@@ -218,10 +222,10 @@ impl RM {
 }
 
 #[derive(Debug)]
-struct IRM(Vec<u8>);
+struct IM(Vec<u8>);
 enum IRMOpCode {
+    Empty,
     Mov,
-    TBD,
     Cmp,
     Add,
     Sub,
@@ -236,7 +240,7 @@ impl IRMOpCode {
         if (op >> 1) ^ 0b1100011 == 0 {
             Some(Self::Mov)
         } else if (op >> 2) ^ 0b100000 == 0 {
-            Some(Self::TBD)
+            Some(Self::Empty)
         } else {
             None
         }
@@ -246,7 +250,7 @@ impl IRMOpCode {
         let op = Self::get(op).unwrap();
         match op {
             Self::Mov => op,
-            Self::TBD => {
+            Self::Empty => {
                 if reg == 0 {
                     Self::Add
                 } else if reg ^ 0b101 == 0 {
@@ -267,12 +271,12 @@ impl IRMOpCode {
             Self::Add => InstType::ADD,
             Self::Sub => InstType::SUB,
             Self::Cmp => InstType::CMP,
-            Self::TBD => unreachable!(),
+            Self::Empty => unreachable!(),
         }
     }
 }
 
-impl IRM {
+impl IM {
     fn match_op(op: u8) -> bool {
         IRMOpCode::match_op(op)
     }
@@ -367,9 +371,7 @@ impl IR {
         self.0[0] & 0b111
     }
     fn len(&self) -> usize {
-        if self.0.len() == 1 {
-            1
-        } else if self.w() == 1 && self.0.len() == 2 {
+        if self.0.len() == 1 || self.w() == 1 && self.0.len() == 2 {
             1
         } else {
             0
@@ -445,9 +447,7 @@ impl MA {
         (self.0[0] >> 1) & 0b1
     }
     fn len(&self) -> usize {
-        if self.0.len() == 1 {
-            1
-        } else if self.w() == 1 && self.0.len() == 2 {
+        if self.0.len() == 1 || self.w() == 1 && self.0.len() == 2 {
             1
         } else {
             0
@@ -462,17 +462,17 @@ impl MA {
 
         let (dst, src_val) = if is_wide {
             let mem = ((self.0[2] as i16) << 8) | self.0[1] as i16;
-            (OperandEncoding::Accumulator16, mem)
+            (OperandEncoding::Accumulator(OperandSize::Word), mem)
         } else {
             let mem = (self.0[1] as i8) as i16;
-            (OperandEncoding::Accumulator8, mem)
+            (OperandEncoding::Accumulator(OperandSize::Byte), mem)
         };
         let mut dst = Encoding::Operand(dst);
 
         let op_code = MAOpCode::from(self.0[0]).unwrap();
         let src = if matches!(op_code, MAOpCode::Mov) {
             let mut src = Encoding::Memory(
-                MemoryEncoding::Memory(src_val as u16),
+                EffectiveAddress::new(RegisterAddress::Empty, src_val),
                 OperandSize::Word,
                 OperandType::Implicit,
             );
@@ -493,10 +493,10 @@ impl MA {
 #[derive(Debug)]
 enum AsmOp {
     RM(RM),
-    IRM(IRM),
+    IM(IM),
     IR(IR),
     MA(MA),
-    JMP(JMP),
+    JP(JP),
     Label(usize),
 }
 
@@ -506,8 +506,8 @@ impl AsmOp {
             Self::RM(r) => r.len(),
             Self::IR(r) => r.len(),
             Self::MA(r) => r.len(),
-            Self::IRM(r) => r.len(),
-            Self::JMP(r) => r.len(),
+            Self::IM(r) => r.len(),
+            Self::JP(r) => r.len(),
             Self::Label(_) => 0,
         }
     }
@@ -517,8 +517,8 @@ impl AsmOp {
             Self::RM(r) => r.push(data),
             Self::IR(r) => r.push(data),
             Self::MA(r) => r.push(data),
-            Self::IRM(r) => r.push(data),
-            Self::JMP(r) => r.push(data),
+            Self::IM(r) => r.push(data),
+            Self::JP(r) => r.push(data),
             Self::Label(_) => panic!("cant push"),
         }
     }
@@ -528,8 +528,8 @@ impl AsmOp {
             Self::RM(r) => r.decode(),
             Self::IR(r) => r.decode(),
             Self::MA(r) => r.decode(),
-            Self::IRM(r) => r.decode(),
-            Self::JMP(r) => r.decode(),
+            Self::IM(r) => r.decode(),
+            Self::JP(r) => r.decode(),
             Self::Label(s) => Inst::new(
                 InstType::Label(format!("label_{}:", s)),
                 Encoding::Empty,
@@ -554,12 +554,12 @@ impl Asm {
                 AsmOp::RM(RM::new(op))
             } else if IR::match_op(op) {
                 AsmOp::IR(IR::new(op))
-            } else if IRM::match_op(op) {
-                AsmOp::IRM(IRM::new(op))
+            } else if IM::match_op(op) {
+                AsmOp::IM(IM::new(op))
             } else if MA::match_op(op) {
                 AsmOp::MA(MA::new(op))
-            } else if JMP::match_op(op) {
-                AsmOp::JMP(JMP::new(op))
+            } else if JP::match_op(op) {
+                AsmOp::JP(JP::new(op))
             } else {
                 return None;
             },
@@ -605,7 +605,7 @@ pub fn parse(it: impl Iterator<Item = u8>) -> Vec<Result<Asm, String>> {
         }
 
         // ugly label handling code
-        if let AsmOp::JMP(jump) = &mut asm.op {
+        if let AsmOp::JP(jump) = &mut asm.op {
             let offset = jump.get_offset();
             let label_ip = (ip as i64 + offset as i64) as usize;
 
