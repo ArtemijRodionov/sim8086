@@ -39,16 +39,16 @@ def diff(a, b):
 
 def read(path):
     with open(path) as f:
-        while (l := f.readline()):
-            yield l.strip()
+        while (line := f.readline()):
+            yield line.strip()
 
 
 def filter_lines(xs):
     for x in xs:
         keep = (x.strip()
-            and not x.strip().startswith(';')
-            and not x.startswith("bits")
-            and not x.startswith("---"))
+                and not x.strip().startswith(';')
+                and not x.startswith("bits")
+                and not x.startswith("---"))
         if keep:
             yield x
 
@@ -149,7 +149,8 @@ def test_machine(number, options):
 def main():
     exec_opt = TestOptions(exec=True, keep_comments=True)
     exec_ip_opt = TestOptions(exec=True, ip=True, keep_comments=True)
-    exec_est_opt = TestOptions(exec=True, ip=True, estimate=True, keep_comments=True)
+    exec_est_opt = TestOptions(
+        exec=True, ip=True, estimate=True, keep_comments=True)
 
     number_to_test = None
     if len(sys.argv) == 2:
@@ -183,6 +184,6 @@ def main():
         test_decode(s)
         test_machine(s, exec_est_opt)
 
+
 if __name__ == "__main__":
     main()
-
