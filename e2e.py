@@ -4,11 +4,6 @@ import glob
 import difflib
 import subprocess
 
-default_decode_src = [37, 38, 39, 40, 41]
-default_exec_src = [43, 44, 46]
-default_exec_ip_src = [48, 49, 51, 52, 53, 54, 55]
-default_estimate_src = [56, 57]
-
 
 def green(msg):
     return f"\033[1;32m{msg}\033[0m"
@@ -69,9 +64,14 @@ def read_asm(src, keep_comments):
     return join(s)
 
 
+class Command:
+    Decode = "decode"
+    Emulate = "emulate"
+
+
 @dataclass
 class TestOptions:
-    exec: bool = False
+    command: str = Command.Decode
     print: bool = True
     dump: str = ""
     ip: bool = False
@@ -80,24 +80,23 @@ class TestOptions:
 
 
 def run_decode(obj_path, options: TestOptions):
-    args = ["./sim8086.bin", obj_path]
-    if options.exec:
-        args.append("--exec")
+    args = ["./sim8086.bin", options.command]
+
     if options.ip:
-        args.append("--ip")
-    if options.print:
-        args.append("--print")
-    if options.dump:
-        args.extend(["--dump", options.dump])
+        args.append("--print-ip")
     if options.estimate:
-        args.append("--estimate")
+        args.append("--print-estimates")
+    if options.dump:
+        args.extend(["--dump-memory", options.dump])
+
+    args.append(obj_path)
     result = subprocess.run(args, capture_output=True)
     if result.returncode != 0:
         raise Exception(result.stderr.decode().strip())
     return result.stdout.decode().strip()
 
 
-def test(src, obj, options=TestOptions()):
+def test(src, obj, options):
     s = read_asm(src, options.keep_comments)
     o = run_decode(obj, options)
     d = diff(s, o)
@@ -132,14 +131,14 @@ def get_obj(glober):
             return g
 
 
-def test_decode(number):
+def test_decode(number, options):
     glober = glob_it(number)
     asm = get_asm(glober)
     obj = get_obj(glober)
-    test(asm, obj)
+    test(asm, obj, options)
 
 
-def test_machine(number, options):
+def test_emulate(number, options):
     glober = glob_it(number)
     asm = get_txt(glober)
     obj = get_obj(glober)
@@ -147,42 +146,56 @@ def test_machine(number, options):
 
 
 def main():
-    exec_opt = TestOptions(exec=True, keep_comments=True)
-    exec_ip_opt = TestOptions(exec=True, ip=True, keep_comments=True)
-    exec_est_opt = TestOptions(
-        exec=True, ip=True, estimate=True, keep_comments=True)
+    decode_src = [37, 38, 39, 40, 41]
+    emulate_src = [43, 44, 46]
+    emulate_ip_src = [48, 49, 51, 52, 53, 54, 55]
+    emulate_estimate_src = [56, 57]
+
+    decode_opt = TestOptions()
+    emulate_opt = TestOptions(command=Command.Emulate, keep_comments=True)
+    emulate_ip_opt = TestOptions(
+        command=Command.Emulate,
+        ip=True,
+        keep_comments=True,
+    )
+    emulate_est_opt = TestOptions(
+        command=Command.Emulate,
+        ip=True,
+        estimate=True,
+        keep_comments=True,
+    )
 
     number_to_test = None
     if len(sys.argv) == 2:
         number_to_test = int(sys.argv[1])
 
     if number_to_test:
-        if number_to_test in default_decode_src:
-            test_decode(number_to_test)
-        elif number_to_test in default_exec_src:
-            test_machine(number_to_test, exec_opt)
-        elif number_to_test in default_exec_ip_src:
-            test_machine(number_to_test, exec_ip_opt)
-        elif number_to_test in default_estimate_src:
-            test_machine(number_to_test, exec_est_opt)
+        if number_to_test in decode_src:
+            test_decode(number_to_test, decode_opt)
+        elif number_to_test in emulate_src:
+            test_emulate(number_to_test, emulate_opt)
+        elif number_to_test in emulate_ip_src:
+            test_emulate(number_to_test, emulate_ip_opt)
+        elif number_to_test in emulate_estimate_src:
+            test_emulate(number_to_test, emulate_est_opt)
         else:
             raise ValueError("Don't know such a test", number_to_test)
         return
 
-    for s in default_decode_src:
-        test_decode(s)
+    for s in decode_src:
+        test_decode(s, decode_opt)
 
-    for s in default_exec_src:
-        test_decode(s)
-        test_machine(s, exec_opt)
+    for s in emulate_src:
+        test_decode(s, decode_opt)
+        test_emulate(s, emulate_opt)
 
-    for s in default_exec_ip_src:
-        test_decode(s)
-        test_machine(s, exec_ip_opt)
+    for s in emulate_ip_src:
+        test_decode(s, decode_opt)
+        test_emulate(s, emulate_ip_opt)
 
-    for s in default_estimate_src:
-        test_decode(s)
-        test_machine(s, exec_est_opt)
+    for s in emulate_estimate_src:
+        test_decode(s, decode_opt)
+        test_emulate(s, emulate_est_opt)
 
 
 if __name__ == "__main__":

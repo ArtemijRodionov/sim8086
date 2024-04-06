@@ -1,72 +1,89 @@
-use std::{collections::HashSet, env::args};
+use std::collections::HashSet;
 
 #[derive(Debug, Default)]
 struct CmdOptions {
     flags: HashSet<String>,
-    asm_path: String,
+    exec_path: String,
     dump_path: String,
 }
 
-fn main() {
-    let options = args()
-        .skip(1)
-        .try_fold(CmdOptions::default(), |mut args, s| {
-            if s.starts_with("--") {
-                args.flags.insert(s.trim_start_matches("--").to_string());
-            } else if args.flags.contains("dump") && args.dump_path.is_empty() {
-                args.dump_path = s.to_string();
-            } else if args.asm_path.is_empty() {
-                args.asm_path = s.to_string();
-            } else {
-                return Err("You can't have multiple paths");
-            }
+fn help() {
+    println!(
+        r#"
+Decode and emulate 8086 assembly
 
-            Ok(args)
-        })
-        .expect("Provide unix path to 8086 binary file");
+Usage: sim8086 [decode/emulate] [flags] [compiled 8086 assembly file]
 
-    if options.flags.is_empty() || options.flags.contains("help") {
-        println!(
-            r#"
-Decoder and interpreter for 8086 assembler
-
-Usage: sim8086 [--flags] [compiled assembly file]
 Flags:
-    --help  prints help
-    --print prints human-readable result. Without this flag there won't be console prints
-    --exec  interpretes a decoded assembly file. Without this flag will only decode an assembly file.
-        --ip prints ip changes during printing 
-        --estimate prints opcodes estimate during printing
-        --dump [file] offload memory after execution to a given file
+--help  prints help
+
+Commands:
+* `decode` - decodes 8086 assembly instructions
+* `emulate` - emulates 8086 assembly
+    * Flags
+        * `--quite` disables printing
+        * `--print-ip` prints ip changes 
+        * `--print-estimates` prints clock's cycles estimation for instructions
+        * `--dump-memory [name]` creates a file with name [name] and dumps emulator's memory into it
 "#
-        )
-    } else if options.flags.contains("exec") {
-        let data = std::fs::read(&options.asm_path).expect("Can't open given file");
-        let asm_ops = sim8086::decoder::parse(data.into_iter());
-        let asm_ops: sim8086::interpreter::Code = asm_ops
+    );
+    std::process::exit(1);
+}
+
+fn main() {
+    let mut args = std::env::args().skip(1);
+    if args.len() == 0 {
+        help();
+    }
+
+    let command = args.next().unwrap();
+    let options = args.fold(CmdOptions::default(), |mut args, s| {
+        if args.flags.contains("dump") && args.dump_path.is_empty() {
+            if s.starts_with("--") {
+                help();
+            }
+            args.dump_path = s.to_string();
+        } else if s.starts_with("--") {
+            args.flags.insert(s.trim_start_matches("--").to_string());
+        } else if args.exec_path.is_empty() {
+            args.exec_path = s.to_string();
+        } else {
+            help();
+        }
+        args
+    });
+
+    if options.exec_path.is_empty() || options.flags.contains("help") {
+        help();
+    }
+
+    if command == "emulate" {
+        let data = std::fs::read(&options.exec_path).expect("Can't open given file");
+        let decoded = sim8086::decoder::decode(data.into_iter());
+        let code: sim8086::emulator::Code = decoded
             .into_iter()
-            .filter_map(|x| x.ok())
+            .map(|x| x.expect("can't decode it"))
             .collect();
 
-        let mut processor = sim8086::interpreter::Processor::new(asm_ops);
-
+        let mut emulator = sim8086::emulator::Emulator::new(code);
         let mut tracer =
-            sim8086::interpreter::Tracer::with_options(sim8086::interpreter::TracerOptions {
-                with_ip: options.flags.contains("ip"),
-                with_print: options.flags.contains("print"),
-                with_estimate: options.flags.contains("estimate"),
+            sim8086::emulator::Tracer::with_options(sim8086::emulator::TracerOptions {
+                with_ip: options.flags.contains("print-ip"),
+                with_estimate: options.flags.contains("print-estimates"),
+                with_trace: !options.flags.contains("quite"),
                 dump_path: options.dump_path,
             });
-
-        tracer.run(&mut processor);
-    } else {
-        let data = std::fs::read(&options.asm_path).expect("Can't open given file");
-        let asm_ops = sim8086::decoder::parse(data.into_iter());
-        for inst in asm_ops {
+        tracer.run(&mut emulator);
+    } else if command == "decode" {
+        let data = std::fs::read(&options.exec_path).expect("Can't open given file");
+        let decoded = sim8086::decoder::decode(data.into_iter());
+        for inst in decoded {
             match inst.map(|x| x.decode()) {
                 Ok(op) => println!("{}", op),
                 Err(e) => println!("{}", e),
             };
         }
+    } else {
+        help();
     }
 }

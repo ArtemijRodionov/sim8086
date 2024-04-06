@@ -59,7 +59,10 @@ fn mode_encode(
 }
 
 #[derive(Debug)]
-struct JP{data: Vec<u8>, label: String}
+struct JP {
+    data: Vec<u8>,
+    label: String,
+}
 impl JP {
     const PREFIX: [(InstType, u8); 20] = [
         (InstType::JNZ, 0b01110101),
@@ -101,7 +104,10 @@ impl JP {
     fn new(op: u8) -> Self {
         let mut v = Vec::with_capacity(2);
         v.push(op);
-        Self{data: v, label: "".to_string()}
+        Self {
+            data: v,
+            label: "".to_string(),
+        }
     }
 
     fn get_offset(&self) -> i8 {
@@ -579,7 +585,7 @@ impl Asm {
     }
 }
 
-pub fn parse(it: impl Iterator<Item = u8>) -> Vec<Result<Asm, String>> {
+pub fn decode(it: impl Iterator<Item = u8>) -> Vec<Result<Asm, String>> {
     let mut ops = vec![];
     let mut it = it.enumerate();
     let mut existed_labels = HashMap::new();

@@ -167,16 +167,17 @@ struct Step {
 }
 
 #[derive(Debug, Default)]
-pub struct Processor {
+pub struct Emulator {
     ip: u16,
     flags: Flags,
     registers: Registers,
     code: Code,
     memory: Vec<u8>,
+    register_update: Option<(Register, i16, i16)>,
     // stack: Vec<u8>,
 }
 
-impl Processor {
+impl Emulator {
     pub fn new(code: Code) -> Self {
         Self {
             code,
@@ -193,7 +194,6 @@ impl Processor {
         let inst = self.code.get_inst(self.ip as usize)?;
         let from_ip = self.ip;
         let from_flags = self.flags;
-        let from_registers = self.registers;
         let mut clock = 0;
         let mut clock_ea = 0;
         let mut clock_transfer = 0;
@@ -359,29 +359,8 @@ impl Processor {
             flag_update = Some((from_flags, self.flags));
         }
 
-        let mut register_update = None;
-        if self.registers != from_registers {
-            register_update = [
-                Register::AX,
-                Register::BX,
-                Register::CX,
-                Register::DX,
-                Register::SP,
-                Register::BP,
-                Register::SI,
-                Register::DI,
-            ]
-            .into_iter()
-            .find_map(|reg| {
-                let to = self.load_register(reg);
-                let from = from_registers.load(reg);
-                if to != from {
-                    Some((reg, from, to))
-                } else {
-                    None
-                }
-            });
-        }
+        let register_update = self.register_update;
+        self.register_update = None;
 
         // TODO Step struct is a bad idea for interpretation loop,
         // but I don't want to spend much time to do it properly
@@ -427,6 +406,7 @@ impl Processor {
     }
 
     fn store_register(&mut self, reg: Register, val: i16) {
+        self.register_update = Some((reg, self.registers.load(reg), val));
         self.registers = self.registers.store(reg, val);
     }
 
@@ -513,7 +493,7 @@ impl Processor {
 #[derive(Default, Clone)]
 pub struct TracerOptions {
     pub with_ip: bool,
-    pub with_print: bool,
+    pub with_trace: bool,
     pub with_estimate: bool,
     pub dump_path: String,
 }
@@ -533,18 +513,18 @@ impl Tracer {
         }
     }
 
-    pub fn run(&mut self, processor: &mut Processor) {
-        if self.opt.with_print {
-            while let Some(step) = processor.step() {
+    pub fn run(&mut self, emulator: &mut Emulator) {
+        if self.opt.with_trace {
+            while let Some(step) = emulator.step() {
                 self.trace(step);
             }
-            self.print(processor);
+            self.print(emulator);
         } else {
-            processor.run();
+            emulator.run();
         }
 
         if !self.opt.dump_path.is_empty() {
-            self.dump(processor);
+            self.dump(emulator);
         }
     }
 
@@ -591,7 +571,7 @@ impl Tracer {
         write_trace("\n".to_string());
     }
 
-    fn print(&mut self, processor: &Processor) {
+    fn print(&mut self, emulator: &Emulator) {
         let mut registers = self.registers.iter().copied().collect::<Vec<Register>>();
         registers.sort();
 
@@ -600,7 +580,7 @@ impl Tracer {
         let mut write_trace = |msg| write!(sink, "{}", msg).unwrap();
         write_trace("Final registers:\n".to_string());
         for reg in registers {
-            let val = processor.load_register(reg);
+            let val = emulator.load_register(reg);
             write_trace(format!(
                 "{:>8}: {:#06x} ({})\n",
                 reg.to_string(),
@@ -612,22 +592,22 @@ impl Tracer {
         if self.opt.with_ip {
             write_trace(format!(
                 "      ip: {:#06x} ({})\n",
-                processor.ip, processor.ip
+                emulator.ip, emulator.ip
             ));
         }
 
-        if processor.flags != Flags(0) {
-            write_trace(format!("   flags: {}", processor.flags));
+        if emulator.flags != Flags(0) {
+            write_trace(format!("   flags: {}", emulator.flags));
         }
 
         write_trace("\n".to_string());
     }
 
-    fn dump(&mut self, processor: &Processor) {
+    fn dump(&mut self, emulator: &Emulator) {
         use std::io::Write;
         let mut sink =
             std::fs::File::create(self.opt.dump_path.clone()).expect("can't create file");
-        sink.write_all(processor.memory.as_ref())
+        sink.write_all(emulator.memory.as_ref())
             .expect("can't dump");
     }
 }
